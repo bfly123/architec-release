@@ -1,0 +1,9 @@
+build/
+dist/
+release-assets/*.tar.gz
+release-assets/*.zip
+release-assets/SHA256SUMS.txt
+release-assets/RELEASE_NOTES.md
+__pycache__/
+*.py[cod]
+.pytest_cache/
