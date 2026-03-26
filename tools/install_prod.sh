@@ -225,6 +225,12 @@ packages_for_command() {
     pip:pacman) printf 'python-pip' ;;
     pip:apk) printf 'py3-pip' ;;
     pip:brew) printf 'python' ;;
+    node:apt-get|nodejs:apt-get|npm:apt-get) printf 'nodejs npm' ;;
+    node:dnf|nodejs:dnf|npm:dnf) printf 'nodejs npm' ;;
+    node:yum|nodejs:yum|npm:yum) printf 'nodejs npm' ;;
+    node:pacman|nodejs:pacman|npm:pacman) printf 'nodejs npm' ;;
+    node:apk|nodejs:apk|npm:apk) printf 'nodejs npm' ;;
+    node:brew|nodejs:brew|npm:brew) printf 'node npm' ;;
     git:apt-get|git:dnf|git:yum|git:pacman|git:apk|git:brew) printf 'git' ;;
     curl:apt-get|curl:dnf|curl:yum|curl:pacman|curl:apk|curl:brew) printf 'curl' ;;
     tar:apt-get|tar:dnf|tar:yum|tar:pacman|tar:apk|tar:brew) printf 'tar' ;;
@@ -459,6 +465,54 @@ install_open_source_dependencies() {
   fi
   install_python_dependency "llmgateway" "llmgateway" "${LLMGATEWAY_WHEEL_URL}" "${LLMGATEWAY_GIT_URL}"
   install_python_dependency "hippocampus" "hippocampus" "${HIPPOCAMPUS_WHEEL_URL}" "${HIPPOCAMPUS_GIT_URL}"
+}
+
+repomix_install_prefix() {
+  printf '%s' "${ARCHITEC_NODE_TOOLS_DIR:-${INSTALL_BASE}/node-tools}"
+}
+
+install_repomix() {
+  local prefix
+  prefix="$(repomix_install_prefix)"
+  local package_dir="${prefix}/repomix"
+  local package_bin="${package_dir}/node_modules/.bin/repomix"
+  local existing_bin=""
+
+  if have_cmd repomix; then
+    existing_bin="$(command -v repomix || true)"
+    mkdir -p "${BIN_DIR}"
+    if [[ -n "${existing_bin}" && ! -x "${BIN_DIR}/repomix" ]]; then
+      if ! ln -sf "${existing_bin}" "${BIN_DIR}/repomix" 2>/dev/null; then
+        cp -f "${existing_bin}" "${BIN_DIR}/repomix"
+      fi
+    fi
+    say "repomix is already available in PATH"
+    return 0
+  fi
+  if [[ -x "${BIN_DIR}/repomix" ]]; then
+    say "repomix launcher already exists at ${BIN_DIR}/repomix"
+    return 0
+  fi
+
+  ensure_command node
+  ensure_command npm
+
+  mkdir -p "${package_dir}" "${BIN_DIR}"
+
+  say "Installing repository structure helper: repomix"
+  if ! npm install --prefix "${package_dir}" --no-fund --no-audit repomix; then
+    die "Failed to install repomix automatically. Please ensure Node.js and npm work, then re-run. Suggested command: npm install --prefix \"${package_dir}\" repomix"
+  fi
+
+  if [[ ! -x "${package_bin}" ]]; then
+    die "repomix installation completed but the binary is missing at ${package_bin}"
+  fi
+
+  if ! ln -sf "${package_bin}" "${BIN_DIR}/repomix" 2>/dev/null; then
+    cp -f "${package_bin}" "${BIN_DIR}/repomix"
+  fi
+
+  say "Installed repomix launcher ${BIN_DIR}/repomix"
 }
 
 resolve_github_release_metadata() {
@@ -829,13 +883,49 @@ should_configure_llm_now() {
 }
 
 validate_llm_config() {
-  if [[ ! -x "${TARGET_DIR}/archi" ]]; then
-    warn "Skipping llmgateway validation because the packaged archi binary is missing."
-    return 0
-  fi
-  ARCHITEC_USER_CONFIG_DIR="${USER_CONFIG_BASE}" \
-  LLMGATEWAY_USER_CONFIG_DIR="${LLMGATEWAY_USER_CONFIG_BASE}" \
-  "${TARGET_DIR}/archi" --skip-auth --check "${PWD}"
+  python3 - "${LLMGATEWAY_CONFIG_PATH}" "${LLM_CONFIG_PATH}" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+gateway_path = Path(sys.argv[1])
+architec_path = Path(sys.argv[2])
+
+if not gateway_path.exists():
+    raise SystemExit(f"llmgateway config missing: {gateway_path}")
+if not architec_path.exists():
+    raise SystemExit(f"architec task config missing: {architec_path}")
+
+gateway_payload = yaml.safe_load(gateway_path.read_text(encoding="utf-8")) or {}
+architec_payload = yaml.safe_load(architec_path.read_text(encoding="utf-8")) or {}
+
+provider = gateway_payload.get("provider") or {}
+settings = gateway_payload.get("settings") or {}
+tasks = architec_payload.get("tasks") or {}
+
+problems: list[str] = []
+if not str(provider.get("provider_type", "") or "").strip():
+    problems.append("provider.provider_type is missing")
+if not str(provider.get("api_style", "") or "").strip():
+    problems.append("provider.api_style is missing")
+if not str(provider.get("base_url", "") or "").strip():
+    problems.append("provider.base_url is missing")
+if not str(provider.get("api_key", "") or "").strip():
+    problems.append("provider.api_key is missing")
+if not str(settings.get("strong_model", "") or "").strip():
+    problems.append("settings.strong_model is missing")
+if not str(settings.get("weak_model", "") or "").strip():
+    problems.append("settings.weak_model is missing")
+if not tasks:
+    problems.append("architec tasks mapping is missing")
+
+if problems:
+    raise SystemExit(
+        "Architec installer LLM config validation failed:\n- "
+        + "\n- ".join(problems)
+    )
+PY
 }
 
 setup_llm_config() {
@@ -1021,6 +1111,7 @@ fi
 install_open_source_dependencies
 
 mkdir -p "${INSTALL_BASE}" "${BIN_DIR}"
+install_repomix
 ARCHIVE_PATH="${TMP_DIR}/${ASSET_NAME}"
 CHECKSUMS_PATH="${TMP_DIR}/SHA256SUMS.txt"
 
@@ -1134,6 +1225,7 @@ say "Binary: ${TARGET_DIR}/${BINARY_NAME}"
 if [[ "${INSTALL_OPEN_SOURCE_DEPS}" != "0" ]]; then
   say "Ensured open-source Python dependencies from release wheels or git: hippocampus, llmgateway"
 fi
+say "Repository structure helper: ${BIN_DIR}/repomix"
 say "Architec task config: ${LLM_CONFIG_PATH}"
 say "LLMGateway config: ${LLMGATEWAY_CONFIG_PATH}"
 if llm_credentials_present; then
