@@ -717,7 +717,7 @@ apply_llm_defaults() {
   gateway_api_style="${gateway_api_style:-openai_chat}"
   gateway_max_concurrent="${gateway_max_concurrent:-4}"
   gateway_retry_max="${gateway_retry_max:-2}"
-  gateway_timeout="${gateway_timeout:-90}"
+  gateway_timeout="${gateway_timeout:-120}"
   architec_llm_strong_model="${architec_llm_strong_model:-gpt-5.4}"
   architec_llm_weak_model="${architec_llm_weak_model:-gpt-5.4-mini}"
   architec_llm_strong_reasoning_effort="${architec_llm_strong_reasoning_effort:-high}"
