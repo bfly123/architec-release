@@ -523,7 +523,7 @@ resolve_github_release_metadata() {
   local api_url=""
 
   if [[ "${VERSION}" == "latest" ]]; then
-    api_url="https://api.github.com/repos/${REPO}/releases/latest"
+    api_url="https://api.github.com/repos/${REPO}/releases?per_page=30"
   else
     api_url="https://api.github.com/repos/${REPO}/releases/tags/${VERSION}"
   fi
@@ -538,21 +538,66 @@ resolve_github_release_metadata() {
   local release_json=""
   release_json="$(curl "${curl_args[@]}" "${api_url}")" || return 1
 
-  RELEASE_JSON="${release_json}" python3 - "${asset_name}" <<'PY'
+  RELEASE_JSON="${release_json}" python3 - "${asset_name}" "${VERSION}" <<'PY'
 import json
 import os
 import re
 import sys
 
 asset_name = sys.argv[1]
+version_hint = str(sys.argv[2] or "").strip()
 payload = json.loads(os.environ["RELEASE_JSON"])
-tag_name = str(payload.get("tag_name", "") or "").strip()
+
+
+def stable_semver_key(tag_name: str):
+    match = re.match(r"^v?(\d+(?:\.\d+)*)$", tag_name)
+    if match is None:
+        return None
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def select_release(raw_payload):
+    if isinstance(raw_payload, dict):
+        return raw_payload
+    if not isinstance(raw_payload, list):
+        raise SystemExit("unexpected GitHub API release payload shape")
+
+    candidates = []
+    for item in raw_payload:
+        if not isinstance(item, dict):
+            continue
+        if bool(item.get("draft")) or bool(item.get("prerelease")):
+            continue
+        tag_text = str(item.get("tag_name", "") or "").strip()
+        version_key = stable_semver_key(tag_text)
+        if version_key is None:
+            continue
+        candidates.append((version_key, item))
+
+    if candidates:
+        candidates.sort(key=lambda pair: pair[0], reverse=True)
+        return candidates[0][1]
+
+    for item in raw_payload:
+        if not isinstance(item, dict):
+            continue
+        if bool(item.get("draft")) or bool(item.get("prerelease")):
+            continue
+        return item
+
+    raise SystemExit(
+        f"no stable release entries found for version selector {version_hint or '<empty>'}"
+    )
+
+
+release = select_release(payload)
+tag_name = str(release.get("tag_name", "") or "").strip()
 download_url = ""
 checksums_url = ""
 hippocampus_wheel_url = ""
 llmgateway_wheel_url = ""
 
-for item in payload.get("assets", []):
+for item in release.get("assets", []):
     name = str(item.get("name", "") or "").strip()
     url = str(item.get("browser_download_url", "") or "").strip()
     if name == asset_name:
