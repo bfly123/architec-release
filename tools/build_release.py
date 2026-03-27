@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tomllib
 from pathlib import Path
 
@@ -74,6 +75,22 @@ def build_dependency_wheels(python_bin: str) -> None:
             [python_bin, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(DIST), str(source)],
             check=True,
         )
+
+
+def build_skills_archive() -> Path:
+    archive_path = DIST / "architec-skills.tar.gz"
+    skill_dirs = [
+        SOURCE_ROOT / "codex_skills",
+        SOURCE_ROOT / "claude_skills",
+    ]
+    for skill_dir in skill_dirs:
+        if not skill_dir.is_dir():
+            raise SystemExit(f"Missing bundled skill directory: {skill_dir}")
+
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for skill_dir in skill_dirs:
+            archive.add(skill_dir, arcname=skill_dir.name)
+    return archive_path
 
 
 def write_checksums(version: str) -> Path:
@@ -146,6 +163,7 @@ def main() -> int:
     version = read_version()
     run_build(args.python, clean=not args.no_clean)
     build_dependency_wheels(args.python)
+    build_skills_archive()
     if args.with_nuitka:
         run_nuitka_build(args.python)
     checksum_file = write_checksums(version)

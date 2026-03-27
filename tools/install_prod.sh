@@ -10,9 +10,13 @@ INSTALL_BASE="${ARCHITEC_INSTALL_BASE:-$HOME/.local/architec}"
 BIN_DIR="${ARCHITEC_BIN_DIR:-$HOME/.local/bin}"
 VERIFY_CHECKSUMS="${ARCHITEC_VERIFY_CHECKSUMS:-1}"
 INSTALL_OPEN_SOURCE_DEPS="${ARCHITEC_INSTALL_OPEN_SOURCE_DEPS:-1}"
+INSTALL_SKILLS="${ARCHITEC_INSTALL_SKILLS:-1}"
 CONFIGURE_LLM="${ARCHITEC_CONFIGURE_LLM:-auto}"
 HIPPOCAMPUS_GIT_URL="${ARCHITEC_HIPPOCAMPUS_GIT_URL:-git+https://github.com/bfly123/hippocampus.git@main}"
 LLMGATEWAY_GIT_URL="${ARCHITEC_LLMGATEWAY_GIT_URL:-git+https://github.com/bfly123/llmgateway.git@main}"
+ARCHITEC_SOURCE_REPO="${ARCHITEC_SOURCE_REPO:-bfly123/architec}"
+ARCHITEC_SKILLS_SOURCE_REF="${ARCHITEC_SKILLS_SOURCE_REF:-}"
+ARCHITEC_SKILLS_ARCHIVE_URL="${ARCHITEC_SKILLS_ARCHIVE_URL:-}"
 HIPPOCAMPUS_WHEEL_URL="${ARCHITEC_HIPPOCAMPUS_WHEEL_URL:-}"
 LLMGATEWAY_WHEEL_URL="${ARCHITEC_LLMGATEWAY_WHEEL_URL:-}"
 RAW_OS_NAME="${ARCHITEC_TARGET_OS:-$(uname -s)}"
@@ -50,6 +54,8 @@ HIPPOCAMPUS_LLM_CONFIG_BASE="$(dirname "${HIPPOCAMPUS_LLM_CONFIG_PATH}")"
 AUTH_STATE_DIR="${STATE_DIR}/auth"
 AUTH_PREFERENCES_PATH="${AUTH_STATE_DIR}/preferences.json"
 LOGIN_METHOD="${ARCHITEC_LOGIN_METHOD:-}"
+CODEX_SKILLS_DIR="${ARCHITEC_CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
+CLAUDE_SKILLS_DIR="${ARCHITEC_CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 
 gateway_provider_type="${gateway_provider_type:-${architec_llm_provider_type:-}}"
 gateway_api_style="${gateway_api_style:-${architec_llm_api_style:-}}"
@@ -100,15 +106,21 @@ Environment overrides:
   ARCHITEC_ASSET_NAME
   ARCHITEC_VERIFY_CHECKSUMS=0
   ARCHITEC_INSTALL_OPEN_SOURCE_DEPS=0
+  ARCHITEC_INSTALL_SKILLS=0
   ARCHITEC_CONFIGURE_LLM=auto|1|0
   ARCHITEC_HIPPOCAMPUS_GIT_URL
   ARCHITEC_LLMGATEWAY_GIT_URL
+  ARCHITEC_SOURCE_REPO
+  ARCHITEC_SKILLS_SOURCE_REF
+  ARCHITEC_SKILLS_ARCHIVE_URL
   ARCHITEC_HIPPOCAMPUS_WHEEL_URL
   ARCHITEC_LLMGATEWAY_WHEEL_URL
   ARCHITEC_SYSTEM_PACKAGE_MANAGER
   ARCHITEC_USER_CONFIG_DIR
   ARCHITEC_LLM_CONFIG
   ARCHITEC_LOGIN_METHOD      browser | activation_code
+  ARCHITEC_CODEX_SKILLS_DIR
+  ARCHITEC_CLAUDE_SKILLS_DIR
   LLMGATEWAY_USER_CONFIG_DIR
   LLMGATEWAY_CONFIG
   HIPPOCAMPUS_USER_CONFIG_DIR
@@ -546,6 +558,161 @@ install_repomix() {
   say "Installed repomix launcher ${BIN_DIR}/repomix"
 }
 
+download_skills_source_archive() {
+  local ref="$1"
+  local output_path="$2"
+  local url="https://github.com/${ARCHITEC_SOURCE_REPO}/archive/refs/heads/${ref}.tar.gz"
+  if [[ "${ref}" == v* ]]; then
+    url="https://github.com/${ARCHITEC_SOURCE_REPO}/archive/refs/tags/${ref}.tar.gz"
+  fi
+  curl -fL "${url}" -o "${output_path}"
+}
+
+resolve_skills_source_ref() {
+  if [[ -n "${ARCHITEC_SKILLS_SOURCE_REF}" ]]; then
+    printf '%s\n' "${ARCHITEC_SKILLS_SOURCE_REF}"
+    return 0
+  fi
+  if [[ -n "${RELEASE_TAG:-}" ]]; then
+    printf '%s\n' "${RELEASE_TAG}"
+  fi
+  printf '%s\n' "source-bootstrap"
+  printf '%s\n' "master"
+  printf '%s\n' "main"
+}
+
+extract_skills_source_archive() {
+  local archive_path="$1"
+  local output_dir="$2"
+  python3 - "${archive_path}" "${output_dir}" <<'PY'
+import sys
+import tarfile
+from pathlib import Path
+
+archive_path = Path(sys.argv[1])
+output_dir = Path(sys.argv[2])
+output_dir.mkdir(parents=True, exist_ok=True)
+with tarfile.open(archive_path, "r:gz") as archive:
+    archive.extractall(output_dir)
+roots = sorted(path for path in output_dir.iterdir() if path.is_dir())
+if not roots:
+    raise SystemExit("no extracted source root found")
+print(str(roots[0]))
+PY
+}
+
+sync_skill_tree() {
+  local source_dir="$1"
+  local target_dir="$2"
+  local label="$3"
+  python3 - "${source_dir}" "${target_dir}" "${label}" <<'PY'
+import shutil
+import sys
+from pathlib import Path
+
+source_dir = Path(sys.argv[1])
+target_dir = Path(sys.argv[2])
+label = sys.argv[3]
+
+if not source_dir.is_dir():
+    raise SystemExit(f"{label} skill source directory missing: {source_dir}")
+
+target_dir.mkdir(parents=True, exist_ok=True)
+for child in sorted(source_dir.iterdir(), key=lambda path: path.name):
+    if not child.is_dir():
+        continue
+    dest = target_dir / child.name
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(child, dest)
+print(f"{label}:{len([p for p in source_dir.iterdir() if p.is_dir()])}")
+PY
+}
+
+extract_bundled_skills_archive() {
+  local archive_path="$1"
+  local output_dir="$2"
+  python3 - "${archive_path}" "${output_dir}" <<'PY'
+import sys
+import tarfile
+from pathlib import Path
+
+archive_path = Path(sys.argv[1])
+output_dir = Path(sys.argv[2])
+output_dir.mkdir(parents=True, exist_ok=True)
+with tarfile.open(archive_path, "r:gz") as archive:
+    archive.extractall(output_dir)
+for required in ("codex_skills", "claude_skills"):
+    if not (output_dir / required).is_dir():
+        raise SystemExit(f"missing bundled skill directory: {required}")
+print(str(output_dir))
+PY
+}
+
+sync_architec_skills() {
+  if [[ "${INSTALL_SKILLS}" == "0" ]]; then
+    say "Skipping Codex / Claude skill sync"
+    return 0
+  fi
+
+  local release_archive_path="${TMP_DIR}/architec-skills.tar.gz"
+  local archive_path="${TMP_DIR}/architec-skills-source.tar.gz"
+  local extract_dir="${TMP_DIR}/architec-skills"
+  local source_root=""
+  local ref=""
+  local downloaded="0"
+
+  if [[ -n "${ARCHITEC_SKILLS_ARCHIVE_URL}" ]]; then
+    say "Fetching bundled Architec skills archive"
+    say "Source: ${ARCHITEC_SKILLS_ARCHIVE_URL}"
+    if curl -fL "${ARCHITEC_SKILLS_ARCHIVE_URL}" -o "${release_archive_path}" >/dev/null 2>&1; then
+      source_root="$(extract_bundled_skills_archive "${release_archive_path}" "${extract_dir}")" || {
+        warn "Failed to extract bundled Architec skills archive. Falling back to source archive."
+        source_root=""
+      }
+      if [[ -n "${source_root}" ]]; then
+        downloaded="1"
+      fi
+    else
+      warn "Could not download bundled Architec skills archive. Falling back to source archive."
+    fi
+  fi
+
+  if [[ "${downloaded}" != "1" ]]; then
+    while IFS= read -r ref; do
+      [[ -n "${ref}" ]] || continue
+      say "Fetching Architec skill bundle from ${ARCHITEC_SOURCE_REPO} (${ref})"
+      if download_skills_source_archive "${ref}" "${archive_path}" >/dev/null 2>&1; then
+        downloaded="1"
+        break
+      fi
+    done < <(resolve_skills_source_ref)
+
+    if [[ "${downloaded}" != "1" ]]; then
+      warn "Could not download Architec skill bundle. Codex / Claude skills were not synchronized."
+      return 1
+    fi
+
+    source_root="$(extract_skills_source_archive "${archive_path}" "${extract_dir}")" || {
+      warn "Failed to extract Architec skill source archive. Codex / Claude skills were not synchronized."
+      return 1
+    }
+  fi
+
+  sync_skill_tree "${source_root}/codex_skills" "${CODEX_SKILLS_DIR}" "codex" >/dev/null || {
+    warn "Failed to sync Codex skills into ${CODEX_SKILLS_DIR}"
+    return 1
+  }
+  sync_skill_tree "${source_root}/claude_skills" "${CLAUDE_SKILLS_DIR}" "claude" >/dev/null || {
+    warn "Failed to sync Claude skills into ${CLAUDE_SKILLS_DIR}"
+    return 1
+  }
+
+  say "Synchronized Codex skills into ${CODEX_SKILLS_DIR}"
+  say "Synchronized Claude skills into ${CLAUDE_SKILLS_DIR}"
+  return 0
+}
+
 resolve_github_release_metadata() {
   local asset_name="$1"
   local api_url=""
@@ -624,6 +791,7 @@ download_url = ""
 checksums_url = ""
 hippocampus_wheel_url = ""
 llmgateway_wheel_url = ""
+skills_archive_url = ""
 
 for item in release.get("assets", []):
     name = str(item.get("name", "") or "").strip()
@@ -632,6 +800,8 @@ for item in release.get("assets", []):
         download_url = url
     elif name == "SHA256SUMS.txt":
         checksums_url = url
+    elif name == "architec-skills.tar.gz":
+        skills_archive_url = url
     elif re.match(r"^hippocampus-.*\.whl$", name):
         hippocampus_wheel_url = url
     elif re.match(r"^llmgateway-.*\.whl$", name):
@@ -640,7 +810,7 @@ for item in release.get("assets", []):
 if not tag_name:
     raise SystemExit("release tag missing from GitHub API response")
 
-print(tag_name, download_url, checksums_url, hippocampus_wheel_url, llmgateway_wheel_url)
+print(tag_name, download_url, checksums_url, hippocampus_wheel_url, llmgateway_wheel_url, skills_archive_url)
 PY
 }
 
@@ -1249,6 +1419,7 @@ fi
 
 BASE_URL="$(printf '%s' "${BASE_URL}" | sed 's#/*$##')"
 FALLBACK_BASE_URL="$(printf '%s' "${FALLBACK_BASE_URL}" | sed 's#/*$##')"
+ARCHITEC_SKILLS_ARCHIVE_URL="$(printf '%s' "${ARCHITEC_SKILLS_ARCHIVE_URL}" | sed 's#/*$##')"
 
 say "Checking local environment"
 ensure_command curl
@@ -1279,7 +1450,7 @@ if [[ -n "${BASE_URL}" ]]; then
   fi
 else
   say "Resolving Architec release metadata from ${REPO} (${VERSION})"
-  read -r RELEASE_TAG DOWNLOAD_URL CHECKSUMS_URL RELEASE_HIPPOCAMPUS_WHEEL_URL RELEASE_LLMGATEWAY_WHEEL_URL < <(
+  read -r RELEASE_TAG DOWNLOAD_URL CHECKSUMS_URL RELEASE_HIPPOCAMPUS_WHEEL_URL RELEASE_LLMGATEWAY_WHEEL_URL RELEASE_SKILLS_ARCHIVE_URL < <(
     resolve_github_release_metadata "${ASSET_NAME}"
   )
   if [[ -z "${HIPPOCAMPUS_WHEEL_URL}" ]]; then
@@ -1288,10 +1459,13 @@ else
   if [[ -z "${LLMGATEWAY_WHEEL_URL}" ]]; then
     LLMGATEWAY_WHEEL_URL="${RELEASE_LLMGATEWAY_WHEEL_URL:-}"
   fi
+  if [[ -z "${ARCHITEC_SKILLS_ARCHIVE_URL}" ]]; then
+    ARCHITEC_SKILLS_ARCHIVE_URL="${RELEASE_SKILLS_ARCHIVE_URL:-}"
+  fi
 fi
 
-if [[ -n "${BASE_URL}" && ( -z "${HIPPOCAMPUS_WHEEL_URL}" || -z "${LLMGATEWAY_WHEEL_URL}" ) ]]; then
-  if read -r _RESOLVED_TAG _RESOLVED_DOWNLOAD_URL _RESOLVED_CHECKSUMS_URL RELEASE_HIPPOCAMPUS_WHEEL_URL RELEASE_LLMGATEWAY_WHEEL_URL < <(
+if [[ -n "${BASE_URL}" && ( -z "${HIPPOCAMPUS_WHEEL_URL}" || -z "${LLMGATEWAY_WHEEL_URL}" || -z "${ARCHITEC_SKILLS_ARCHIVE_URL}" ) ]]; then
+  if read -r _RESOLVED_TAG _RESOLVED_DOWNLOAD_URL _RESOLVED_CHECKSUMS_URL RELEASE_HIPPOCAMPUS_WHEEL_URL RELEASE_LLMGATEWAY_WHEEL_URL RELEASE_SKILLS_ARCHIVE_URL < <(
     resolve_github_release_metadata "${ASSET_NAME}" 2>/dev/null
   ); then
     if [[ -z "${HIPPOCAMPUS_WHEEL_URL}" ]]; then
@@ -1300,8 +1474,11 @@ if [[ -n "${BASE_URL}" && ( -z "${HIPPOCAMPUS_WHEEL_URL}" || -z "${LLMGATEWAY_WH
     if [[ -z "${LLMGATEWAY_WHEEL_URL}" ]]; then
       LLMGATEWAY_WHEEL_URL="${RELEASE_LLMGATEWAY_WHEEL_URL:-}"
     fi
+    if [[ -z "${ARCHITEC_SKILLS_ARCHIVE_URL}" ]]; then
+      ARCHITEC_SKILLS_ARCHIVE_URL="${RELEASE_SKILLS_ARCHIVE_URL:-}"
+    fi
   else
-    warn "Could not resolve dependency wheel URLs from GitHub release metadata. Falling back to git sources for hippocampus and llmgateway."
+    warn "Could not resolve dependency wheel or skill bundle URLs from GitHub release metadata. Falling back to git sources for hippocampus/llmgateway and source archive fallback for skills."
   fi
 fi
 
@@ -1419,6 +1596,7 @@ fi
 
 setup_llm_config
 setup_login_method
+sync_architec_skills || true
 
 say
 say "Installed Architec ${RELEASE_TAG} to ${TARGET_DIR}"
@@ -1432,6 +1610,10 @@ say "Architec task config: ${LLM_CONFIG_PATH}"
 say "Hippocampus task config: ${HIPPOCAMPUS_LLM_CONFIG_PATH}"
 say "LLMGateway config: ${LLMGATEWAY_CONFIG_PATH}"
 say "Login preference: ${LOGIN_METHOD}"
+if [[ "${INSTALL_SKILLS}" != "0" ]]; then
+  say "Codex skills: ${CODEX_SKILLS_DIR}"
+  say "Claude skills: ${CLAUDE_SKILLS_DIR}"
+fi
 if llm_credentials_present; then
   if [[ "${LOGIN_METHOD}" == "activation_code" ]]; then
     say "Next step: run archi login, note the machine code, then generate an activation code at https://www.architec.top/account"

@@ -31,6 +31,7 @@ wheel_path="${DIST_DIR}/architec-${VERSION}-py3-none-any.whl"
 sdist_path="${DIST_DIR}/architec-${VERSION}.tar.gz"
 checksums_path="${DIST_DIR}/SHA256SUMS.txt"
 install_script_path="${ROOT_DIR}/tools/install_prod.sh"
+skills_archive_path="${DIST_DIR}/architec-skills.tar.gz"
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh CLI is required to publish releases." >&2
@@ -67,6 +68,7 @@ required_assets=(
   "${sdist_path}"
   "${checksums_path}"
   "${install_script_path}"
+  "${skills_archive_path}"
 )
 required_assets+=("${compiled_artifacts[@]}")
 required_assets+=("${dependency_artifacts[@]}")
@@ -89,6 +91,7 @@ if ! gh api "repos/${RELEASE_REPO}/releases/tags/${VERSION_TAG}" >/dev/null 2>&1
     "${sdist_path}" \
     "${checksums_path}" \
     "${install_script_path}" \
+    "${skills_archive_path}" \
     "${compiled_artifacts[@]}" \
     "${dependency_artifacts[@]}" \
     --repo "${RELEASE_REPO}" \
@@ -100,6 +103,7 @@ else
     "${sdist_path}" \
     "${checksums_path}" \
     "${install_script_path}" \
+    "${skills_archive_path}" \
     "${compiled_artifacts[@]}" \
     "${dependency_artifacts[@]}" \
     --clobber \
