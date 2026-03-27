@@ -711,7 +711,7 @@ PY
 
 apply_llm_defaults() {
   gateway_provider_type="${gateway_provider_type:-openai}"
-  gateway_api_style="${gateway_api_style:-openai_responses}"
+  gateway_api_style="${gateway_api_style:-openai_chat}"
   gateway_max_concurrent="${gateway_max_concurrent:-4}"
   gateway_retry_max="${gateway_retry_max:-2}"
   gateway_timeout="${gateway_timeout:-90}"
@@ -768,8 +768,8 @@ def render_mapping_block(indent: str, key: str, mapping: dict[str, object]) -> l
 
 lines = [
     "# llmgateway config for Architec",
-    "# Common case: only edit provider.base_url, provider.api_key, settings.strong_model,",
-    "# settings.weak_model, and settings.max_concurrent.",
+    "# Common case: keep provider_type and api_style as-is, then only fill provider.base_url",
+    "# and provider.api_key. The settings block already contains the recommended defaults.",
     "# headers usually stays {} unless your provider explicitly requires extra HTTP headers.",
     "# model_map usually stays {} unless your backend expects different model ids.",
     "version: 1",
@@ -938,9 +938,8 @@ setup_llm_config() {
   if should_configure_llm_now; then
     say
     say "LLMGateway setup"
-    say "You can configure the API now, or leave fields blank and edit ${LLMGATEWAY_CONFIG_PATH} later."
-    prompt_with_default gateway_provider_type "LLMGateway provider type [${gateway_provider_type}]: " "${gateway_provider_type}"
-    prompt_with_default gateway_api_style "LLMGateway API style [${gateway_api_style}]: " "${gateway_api_style}"
+    say "Most users only need to fill the base URL and API key now."
+    say "provider_type=${gateway_provider_type}, api_style=${gateway_api_style}"
     prompt_with_default gateway_base_url "LLMGateway base URL [${gateway_base_url:-none}]: " "${gateway_base_url:-}"
     if [[ -n "${gateway_api_key:-}" ]]; then
       prompt_secret_with_default gateway_api_key "LLMGateway API key [press Enter to keep current value]: " "${gateway_api_key}"
