@@ -39,6 +39,9 @@ else
   LLMGATEWAY_CONFIG_PATH="${LLMGATEWAY_USER_CONFIG_BASE}/config.yaml"
 fi
 LLMGATEWAY_CONFIG_BASE="$(dirname "${LLMGATEWAY_CONFIG_PATH}")"
+AUTH_STATE_DIR="${STATE_DIR}/auth"
+AUTH_PREFERENCES_PATH="${AUTH_STATE_DIR}/preferences.json"
+LOGIN_METHOD="${ARCHITEC_LOGIN_METHOD:-}"
 
 gateway_provider_type="${gateway_provider_type:-${architec_llm_provider_type:-}}"
 gateway_api_style="${gateway_api_style:-${architec_llm_api_style:-}}"
@@ -97,6 +100,7 @@ Environment overrides:
   ARCHITEC_SYSTEM_PACKAGE_MANAGER
   ARCHITEC_USER_CONFIG_DIR
   ARCHITEC_LLM_CONFIG
+  ARCHITEC_LOGIN_METHOD      browser | activation_code
   LLMGATEWAY_USER_CONFIG_DIR
   LLMGATEWAY_CONFIG
   architec_llm_provider_type
@@ -151,6 +155,20 @@ falsy() {
       ;;
     *)
       return 1
+      ;;
+  esac
+}
+
+normalize_login_method() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    browser|web)
+      printf 'browser'
+      ;;
+    activation_code|activation-code|activation|code|manual)
+      printf 'activation_code'
+      ;;
+    *)
+      printf ''
       ;;
   esac
 }
@@ -676,6 +694,89 @@ prompt_yes_no() {
   truthy "${reply}"
 }
 
+load_existing_login_method() {
+  if [[ -n "${LOGIN_METHOD:-}" ]]; then
+    LOGIN_METHOD="$(normalize_login_method "${LOGIN_METHOD}")"
+    return 0
+  fi
+  if [[ ! -f "${AUTH_PREFERENCES_PATH}" ]]; then
+    return 0
+  fi
+  local loaded=""
+  loaded="$(python3 - "${AUTH_PREFERENCES_PATH}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+print(str((payload or {}).get("login_method", "") or "").strip())
+PY
+)"
+  if [[ -n "${loaded}" ]]; then
+    LOGIN_METHOD="$(normalize_login_method "${loaded}")"
+  fi
+}
+
+prompt_login_method() {
+  local default_method="${1:-browser}"
+  local default_choice="1"
+  local reply=""
+  if [[ "${default_method}" == "activation_code" ]]; then
+    default_choice="2"
+  fi
+  if ! is_interactive; then
+    LOGIN_METHOD="${default_method}"
+    return 0
+  fi
+  say
+  say "Choose the default activation method for archi login"
+  say "  1. Browser authorization"
+  say "  2. Activation code"
+  read -r -p "Selection [${default_choice}]: " reply
+  if [[ -z "${reply}" ]]; then
+    LOGIN_METHOD="${default_method}"
+    return 0
+  fi
+  case "$(printf '%s' "${reply}" | tr '[:upper:]' '[:lower:]')" in
+    1|browser|web)
+      LOGIN_METHOD="browser"
+      ;;
+    2|activation|activation_code|activation-code|code|manual)
+      LOGIN_METHOD="activation_code"
+      ;;
+    *)
+      warn "Unrecognized activation method selection. Falling back to ${default_method}."
+      LOGIN_METHOD="${default_method}"
+      ;;
+  esac
+}
+
+write_auth_preferences() {
+  local method_text
+  method_text="$(normalize_login_method "${LOGIN_METHOD:-}")"
+  if [[ -z "${method_text}" ]]; then
+    method_text="browser"
+  fi
+  mkdir -p "${AUTH_STATE_DIR}"
+  python3 - "${AUTH_PREFERENCES_PATH}" "${method_text}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+method = sys.argv[2]
+payload = {"login_method": method}
+path.write_text(json.dumps(payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+PY
+  chmod 600 "${AUTH_PREFERENCES_PATH}"
+  LOGIN_METHOD="${method_text}"
+}
+
 load_existing_gateway_config() {
   if [[ ! -f "${LLMGATEWAY_CONFIG_PATH}" ]]; then
     return 0
@@ -1021,6 +1122,16 @@ setup_llm_config() {
   say "Skipped llmgateway API setup for now. Edit ${LLMGATEWAY_CONFIG_PATH} later when you are ready."
 }
 
+setup_login_method() {
+  load_existing_login_method
+  if [[ -z "${LOGIN_METHOD}" ]]; then
+    prompt_login_method "browser"
+  fi
+  write_auth_preferences
+  say "Default activation method: ${LOGIN_METHOD}"
+  say "You can override it later with: archi login --browser  or  archi login --activation-code"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version)
@@ -1264,6 +1375,7 @@ if ! ln -sf "${TARGET_DIR}/${BINARY_NAME}" "${BIN_DIR}/archi" 2>/dev/null; then
 fi
 
 setup_llm_config
+setup_login_method
 
 say
 say "Installed Architec ${RELEASE_TAG} to ${TARGET_DIR}"
@@ -1275,8 +1387,17 @@ fi
 say "Repository structure helper: ${BIN_DIR}/repomix"
 say "Architec task config: ${LLM_CONFIG_PATH}"
 say "LLMGateway config: ${LLMGATEWAY_CONFIG_PATH}"
+say "Login preference: ${LOGIN_METHOD}"
 if llm_credentials_present; then
-  say "Next step: archi login"
+  if [[ "${LOGIN_METHOD}" == "activation_code" ]]; then
+    say "Next step: run archi login, note the machine code, then generate an activation code at https://www.architec.top/account"
+  else
+    say "Next step: archi login"
+  fi
 else
-  say "Next step: fill in ${LLMGATEWAY_CONFIG_PATH}, then run archi login"
+  if [[ "${LOGIN_METHOD}" == "activation_code" ]]; then
+    say "Next step: fill in ${LLMGATEWAY_CONFIG_PATH}, then run archi login and use the machine code at https://www.architec.top/account"
+  else
+    say "Next step: fill in ${LLMGATEWAY_CONFIG_PATH}, then run archi login"
+  fi
 fi
