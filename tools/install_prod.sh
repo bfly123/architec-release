@@ -39,6 +39,14 @@ else
   LLMGATEWAY_CONFIG_PATH="${LLMGATEWAY_USER_CONFIG_BASE}/config.yaml"
 fi
 LLMGATEWAY_CONFIG_BASE="$(dirname "${LLMGATEWAY_CONFIG_PATH}")"
+
+HIPPOCAMPUS_USER_CONFIG_BASE="${HIPPOCAMPUS_USER_CONFIG_DIR:-$HOME/.hippocampus}"
+if [[ -n "${HIPPOCAMPUS_LLM_CONFIG:-}" ]]; then
+  HIPPOCAMPUS_LLM_CONFIG_PATH="${HIPPOCAMPUS_LLM_CONFIG}"
+else
+  HIPPOCAMPUS_LLM_CONFIG_PATH="${HIPPOCAMPUS_USER_CONFIG_BASE}/config.yaml"
+fi
+HIPPOCAMPUS_LLM_CONFIG_BASE="$(dirname "${HIPPOCAMPUS_LLM_CONFIG_PATH}")"
 AUTH_STATE_DIR="${STATE_DIR}/auth"
 AUTH_PREFERENCES_PATH="${AUTH_STATE_DIR}/preferences.json"
 LOGIN_METHOD="${ARCHITEC_LOGIN_METHOD:-}"
@@ -103,6 +111,8 @@ Environment overrides:
   ARCHITEC_LOGIN_METHOD      browser | activation_code
   LLMGATEWAY_USER_CONFIG_DIR
   LLMGATEWAY_CONFIG
+  HIPPOCAMPUS_USER_CONFIG_DIR
+  HIPPOCAMPUS_LLM_CONFIG
   architec_llm_provider_type
   architec_llm_api_style
   architec_llm_main_url
@@ -988,6 +998,38 @@ PY
   chmod 600 "${LLM_CONFIG_PATH}"
 }
 
+write_hippocampus_config() {
+  if [[ -f "${HIPPOCAMPUS_LLM_CONFIG_PATH}" ]]; then
+    return 0
+  fi
+
+  mkdir -p "${HIPPOCAMPUS_LLM_CONFIG_BASE}"
+  python3 - "${HIPPOCAMPUS_LLM_CONFIG_PATH}" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+config_path = Path(sys.argv[1])
+payload = {
+    "version": 1,
+    "tasks": {
+        "phase_1": {"tier": "weak"},
+        "phase_2a": {"tier": "strong"},
+        "phase_2b": {"tier": "weak"},
+        "phase_3a": {"tier": "weak"},
+        "phase_3b": {"tier": "strong"},
+        "architect": {"tier": "strong"},
+    },
+}
+config_path.write_text(
+    yaml.safe_dump(payload, default_flow_style=False, allow_unicode=True, sort_keys=False),
+    encoding="utf-8",
+)
+PY
+  chmod 600 "${HIPPOCAMPUS_LLM_CONFIG_PATH}"
+}
+
 seed_global_json_config() {
   local name="$1"
   local src="${TARGET_DIR}/config/${name}"
@@ -1081,6 +1123,7 @@ setup_llm_config() {
   seed_global_json_config "rubric.json"
   seed_global_json_config "scoring-policy.json"
   write_architec_config
+  write_hippocampus_config
   load_existing_gateway_config
   apply_llm_defaults
 
@@ -1386,6 +1429,7 @@ if [[ "${INSTALL_OPEN_SOURCE_DEPS}" != "0" ]]; then
 fi
 say "Repository structure helper: ${BIN_DIR}/repomix"
 say "Architec task config: ${LLM_CONFIG_PATH}"
+say "Hippocampus task config: ${HIPPOCAMPUS_LLM_CONFIG_PATH}"
 say "LLMGateway config: ${LLMGATEWAY_CONFIG_PATH}"
 say "Login preference: ${LOGIN_METHOD}"
 if llm_credentials_present; then
