@@ -1151,18 +1151,18 @@ setup_llm_config() {
       validate_llm_config
       say "LLMGateway configuration validated"
     else
-      warn "LLMGateway config was saved without base URL or API key. Edit ${LLMGATEWAY_CONFIG_PATH} later, then run: archi --check <repo>"
+      warn "LLMGateway config was saved without provider.base_url or provider.api_key. Fill those fields in ${LLMGATEWAY_CONFIG_PATH}, then run: archi --check <repo>"
     fi
     return 0
   fi
 
   if [[ ! -f "${LLMGATEWAY_CONFIG_PATH}" ]]; then
     write_gateway_config
-    warn "Created a starter llmgateway config template at ${LLMGATEWAY_CONFIG_PATH}"
+    warn "Created a starter llmgateway config template at ${LLMGATEWAY_CONFIG_PATH}. Fill provider.base_url and provider.api_key before running hippo or archi."
   else
     say "Keeping existing llmgateway config at ${LLMGATEWAY_CONFIG_PATH}"
   fi
-  say "Skipped llmgateway API setup for now. Edit ${LLMGATEWAY_CONFIG_PATH} later when you are ready."
+  say "Skipped llmgateway API setup for now. Fill provider.base_url and provider.api_key in ${LLMGATEWAY_CONFIG_PATH} when you are ready."
 }
 
 setup_login_method() {
@@ -1440,8 +1440,8 @@ if llm_credentials_present; then
   fi
 else
   if [[ "${LOGIN_METHOD}" == "activation_code" ]]; then
-    say "Next step: fill in ${LLMGATEWAY_CONFIG_PATH}, then run archi login and use the machine code at https://www.architec.top/account"
+    say "Next step: fill provider.base_url and provider.api_key in ${LLMGATEWAY_CONFIG_PATH}, then run archi login and use the machine code at https://www.architec.top/account"
   else
-    say "Next step: fill in ${LLMGATEWAY_CONFIG_PATH}, then run archi login"
+    say "Next step: fill provider.base_url and provider.api_key in ${LLMGATEWAY_CONFIG_PATH}, then run archi login"
   fi
 fi
