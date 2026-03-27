@@ -402,6 +402,7 @@ install_python_git_package() {
   fi
 
   pip_args+=(--upgrade --force-reinstall)
+  pip_args+=(--find-links "${TMP_DIR}")
 
   say "Installing or upgrading open-source dependency: ${label}"
   say "Source: ${git_url}"
@@ -418,17 +419,25 @@ install_python_wheel_package() {
   wheel_name="$(basename "${wheel_url%%\?*}")"
   local wheel_path="${TMP_DIR}/${wheel_name}"
   local pip_args=()
+  local pip_targets=()
+  local extra_wheel=""
 
   if python_can_use_user_site; then
     pip_args+=(--user)
   fi
 
   pip_args+=(--upgrade --force-reinstall)
+  pip_targets+=("${wheel_path}")
 
   say "Installing or upgrading open-source dependency: ${label}"
   say "Wheel source: ${wheel_url}"
   curl -fL "${wheel_url}" -o "${wheel_path}" || die "Failed to download ${label} wheel from ${wheel_url}"
-  python3 -m pip install "${pip_args[@]}" "${wheel_path}" || die "Failed to install ${label} from wheel ${wheel_url}"
+  for extra_wheel in "${TMP_DIR}"/*.whl; do
+    [[ -e "${extra_wheel}" ]] || continue
+    [[ "${extra_wheel}" == "${wheel_path}" ]] && continue
+    pip_targets+=("${extra_wheel}")
+  done
+  python3 -m pip install "${pip_args[@]}" "${pip_targets[@]}" || die "Failed to install ${label} from wheel ${wheel_url}"
 }
 
 install_python_dependency() {
