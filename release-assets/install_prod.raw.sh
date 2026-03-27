@@ -397,16 +397,13 @@ install_python_git_package() {
   local git_url="$3"
   local pip_args=()
 
-  if python_package_available "${module_name}"; then
-    say "${label} is already available in this Python environment"
-    return 0
-  fi
-
   if python_can_use_user_site; then
     pip_args+=(--user)
   fi
 
-  say "Installing open-source dependency: ${label}"
+  pip_args+=(--upgrade --force-reinstall)
+
+  say "Installing or upgrading open-source dependency: ${label}"
   say "Source: ${git_url}"
   if ! python3 -m pip install "${pip_args[@]}" "${git_url}"; then
     die "Failed to install ${label} from ${git_url}. Please fix Python/network/build dependencies and re-run."
@@ -422,16 +419,13 @@ install_python_wheel_package() {
   local wheel_path="${TMP_DIR}/${wheel_name}"
   local pip_args=()
 
-  if python_package_available "${module_name}"; then
-    say "${label} is already available in this Python environment"
-    return 0
-  fi
-
   if python_can_use_user_site; then
     pip_args+=(--user)
   fi
 
-  say "Installing open-source dependency: ${label}"
+  pip_args+=(--upgrade --force-reinstall)
+
+  say "Installing or upgrading open-source dependency: ${label}"
   say "Wheel source: ${wheel_url}"
   curl -fL "${wheel_url}" -o "${wheel_path}" || die "Failed to download ${label} wheel from ${wheel_url}"
   python3 -m pip install "${pip_args[@]}" "${wheel_path}" || die "Failed to install ${label} from wheel ${wheel_url}"
