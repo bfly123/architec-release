@@ -2,6 +2,8 @@ build/
 dist/
 release-assets/*.tar.gz
 release-assets/*.zip
+release-assets/*.whl
+release-assets/install_prod.raw.sh
 release-assets/SHA256SUMS.txt
 release-assets/RELEASE_NOTES.md
 __pycache__/
