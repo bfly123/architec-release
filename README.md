@@ -1,89 +1,130 @@
-# architec-release
+<div align="center">
+  <img src="https://www.architec.top/logo-mark.svg" alt="Architec Logo" width="88" />
+  <h1>Architec</h1>
+  <p><strong>我是阿奇(Archi)</strong></p>
+  <p>一个基于语义与规则的专业代码架构师</p>
+  <p>我专注于构建优美的代码建筑</p>
+  <p>融入 Codex / Claude，为你的 vibe coding 导航</p>
+</div>
 
-`architec-release` 是 Architec 的发布控制仓，不是对外给用户下载的正式发布页。
+<p align="center">
+  <a href="https://www.architec.top">官网</a> ·
+  <a href="https://www.architec.top/how-it-works">使用说明</a> ·
+  <a href="https://github.com/bfly123/architec-releases/releases/latest">最新发布</a>
+</p>
 
-它负责：
+---
 
-- release 构建与打包
-- 安装脚本维护
-- GitHub Releases 发布自动化
-- 安装回归验证
+## Architec 是什么
 
-对外公开给用户访问和下载的仓库是：
+Architec 基于规则与语义对代码库进行全面分析，建立结构索引，识别架构热点，并为新需求与未来演化提供可执行的架构建议。
 
-- `bfly123/architec-releases`
-- <https://github.com/bfly123/architec-releases>
+它不是一个简单的命令行评分器，而是一套面向复杂工程的架构分析入口。它会先结合 Hippo 为项目建立结构索引，再读取规则结果、语义理解、变更上下文与历史热点，把原本分散在代码树里的信息整理成可执行的架构视图。这个视图既能给人看，也能继续交给 Codex / Claude 使用。
 
-官网入口是：
+## 快速开始
 
-- <https://www.architec.top>
-- <https://www.architec.top/how-it-works>
+推荐直接使用正式安装脚本：
 
-## 仓库角色
-
-这套发布体系目前分成三层：
-
-- 开发源码仓：`../architec`
-- 网站与授权仓：`../architec-cloud`
-- 发布控制仓：`../architec-release`
-
-默认本地布局：
-
-```text
-/home/bfly/workspace/
-  architec/
-  architec-cloud/
-  architec-release/
+```bash
+curl -fsSL https://www.architec.top/downloads/latest/install_prod.sh -o install_prod.sh && bash install_prod.sh
 ```
 
-## 关键目录
+安装器会自动完成：
+
+- 检查基础运行环境
+- 下载并安装 `archi`
+- 自动安装开源依赖 `hippocampus` 与 `llmgateway`
+- 生成默认配置模板
+- 把命令放入本机可执行路径
+
+安装完成后，推荐按下面顺序开始：
+
+```bash
+archi login
+hippo .
+archi .
+```
+
+## 它解决什么问题
+
+大型工程最难的不是写代码，而是在改动前真正理解系统。Architec 的意义，是在你动手之前先给出一张结构化地图：
+
+- 哪些模块最脆弱
+- 哪些变更风险最高
+- 哪些边界已经开始漂移
+- 哪些文件只是局部问题，而不是系统问题
+
+## 核心能力
+
+- 对整个代码库做全面架构分析，输出架构热点、边界风险和优化方向
+- 围绕新功能需求提供架构建议，而不是只做静态评分
+- 通过 skill 融入 Codex / Claude，把结构视图和热点问题继续交给 AI 使用
+- 持续为后续重构、模块拆分、边界收敛和未来演化提供参考
+
+## 怎么使用
+
+1. 执行登录授权：
+
+```bash
+archi login
+```
+
+首次使用时，可以按安装器记录的默认方式完成授权。当前支持：
+
+- 浏览器授权
+- 激活码授权
+
+2. 在项目根目录建立结构上下文：
+
+```bash
+hippo .
+archi .
+```
+
+3. 重启 Codex / Claude，让 skill 同步完成，再基于 Archi 结果做优化、评审、拆分与演化决策。
+
+## 你会得到什么结果
+
+运行 `hippo .` 和 `archi .` 后，通常会看到两个关键目录：
+
+- `.hippocampus/`
+  保存项目结构索引、签名抽取、依赖关系与基础中间结果
+- `.architec/`
+  保存架构分析结果、热点判断、可视化与报告输出
+
+这两个目录都可以直接给使用者和 AI 助手继续参考。
+
+## 常用命令
+
+```bash
+archi --version
+archi --help
+archi login
+archi update
+hippo .
+archi .
+```
+
+## 从 GitHub 进入时怎么理解这里
+
+这里既是 Architec 的 GitHub 发布入口，也是产品说明和版本管理入口。
+
+- 查看正式安装包和版本记录：GitHub Releases
+- 查看完整使用说明：官网 `how-it-works`
+- 注册、登录、授权、账号状态和设备管理：官网
+- 本地项目分析：在用户自己的机器上执行
+
+## 相关入口
+
+- 官网：<https://www.architec.top>
+- 使用说明：<https://www.architec.top/how-it-works>
+- 最新发布：<https://github.com/bfly123/architec-releases/releases/latest>
+
+## 维护说明
+
+如果你在维护这个仓库本身的发布能力，关键入口是：
 
 - 发布脚本：`tools/`
-- 发布文档：`docs/`
-- 本地生成产物：`release-assets/`
-
-## 日常使用
-
-构建 release 资产：
-
-```bash
-python3 tools/build_release.py --with-nuitka
-```
-
-执行真实安装回归：
-
-```bash
-bash tools/release_install_smoke.sh
-```
-
-从开发仓切正式版本：
-
-```bash
-bash tools/cut_release.sh
-```
-
-同步公开发布仓 README：
-
-```bash
-bash tools/sync_public_release_repo.sh
-```
-
-## 对外说明应该看哪里
-
-如果你要维护 GitHub 上给用户看的下载、安装和使用说明，优先维护：
-
-- 公开 release 仓 README：`bfly123/architec-releases`
-- GitHub release 正文说明
-- 官网功能介绍页：<https://www.architec.top/how-it-works>
 - 公共 README 模板：`docs/public-release-readme.md`
-
-这个仓库更偏内部发布运维，不应该承载面向普通用户的主要产品介绍。
-
-## 可覆盖环境变量
-
-当三个仓库不是兄弟目录时，可以覆盖：
-
-- `ARCHITEC_SOURCE_DIR`
-- `ARCHITEC_CLOUD_DIR`
-- `ARCHITEC_HIPPOCAMPUS_SOURCE`
-- `ARCHITEC_LLMGATEWAY_SOURCE`
+- README 同步脚本：`tools/sync_public_release_repo.sh`
+- 本地生成产物目录：`release-assets/`
