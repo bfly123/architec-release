@@ -62,6 +62,12 @@ bash tools/release_install_smoke.sh
 bash tools/cut_release.sh
 ```
 
+同步公开发布仓 README：
+
+```bash
+bash tools/sync_public_release_repo.sh
+```
+
 ## 对外说明应该看哪里
 
 如果你要维护 GitHub 上给用户看的下载、安装和使用说明，优先维护：
@@ -69,6 +75,7 @@ bash tools/cut_release.sh
 - 公开 release 仓 README：`bfly123/architec-releases`
 - GitHub release 正文说明
 - 官网功能介绍页：<https://www.architec.top/how-it-works>
+- 公共 README 模板：`docs/public-release-readme.md`
 
 这个仓库更偏内部发布运维，不应该承载面向普通用户的主要产品介绍。
 
