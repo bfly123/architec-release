@@ -70,7 +70,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install build
-          python -m pip install nuitka ordered-set zstandard
+          python -m pip install nuitka ordered-set zstandard PyYAML cryptography
 
       - name: Install Linux build prerequisites
         if: matrix.target_os == 'linux'
