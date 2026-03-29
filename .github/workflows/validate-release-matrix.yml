@@ -47,6 +47,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bfly123/architec
+          ref: master
           path: architec
           ssh-key: ${{ secrets.ARCHITEC_REPO_SSH_KEY }}
 
