@@ -264,9 +264,14 @@ bash install_prod.sh --skip-checksum
 
 当前实际能力边界：
 
-- 安装器已经支持未来的多平台命名和解压逻辑
-- 当前 GitHub workflow 仍只在 `ubuntu-latest` 上构建 Linux 编译包
-- macOS / Windows 产物仍需要分别在对应 runner 上补齐
+- 用户侧安装命令可以保持不变，Linux / macOS 默认都使用同一条安装命令
+- 安装器会根据当前机器自动选择 `archi-<os>-<arch>` 对应资产
+- 真正的前提是 release 中必须已经包含对应平台的编译包
+- 当前发布侧至少应保证：
+  - `archi-linux-x86_64.tar.gz`
+  - `archi-macos-arm64.tar.gz`
+- 如需覆盖 Intel Mac，再补：
+  - `archi-macos-x86_64.tar.gz`
 
 网站职责边界：
 

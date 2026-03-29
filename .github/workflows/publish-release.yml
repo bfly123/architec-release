@@ -84,27 +84,16 @@ jobs:
         working-directory: release-control
         run: bash tools/build_nuitka.sh
 
-      - name: Verify Linux compiled artifact starts
-        if: matrix.target_os == 'linux'
+      - name: Verify compiled artifact starts
         working-directory: release-control
         run: |
-          tmp_dir="$(mktemp -d)"
-          trap 'rm -rf "${tmp_dir}"' EXIT
-          tar -xzf "release-assets/archi-${{ matrix.target_os }}-${{ matrix.target_arch }}.tar.gz" -C "${tmp_dir}"
-          binary_path="$(find "${tmp_dir}" -type f -name archi | head -n 1)"
-          if [[ -z "${binary_path}" ]]; then
-            echo "Compiled archi binary not found after extraction." >&2
-            exit 1
+          archive_path="release-assets/archi-${{ matrix.target_os }}-${{ matrix.target_arch }}"
+          if [[ "${{ matrix.target_os }}" == "windows" ]]; then
+            archive_path="${archive_path}.zip"
+          else
+            archive_path="${archive_path}.tar.gz"
           fi
-          "${binary_path}" status --json > "${tmp_dir}/status.json"
-          python - "${tmp_dir}/status.json" <<'PY'
-          import json
-          import sys
-
-          payload = json.load(open(sys.argv[1], "r", encoding="utf-8"))
-          if payload.get("authenticated") is not False:
-              raise SystemExit(f"unexpected startup status payload: {payload}")
-          PY
+          python tools/verify_compiled_bundle.py "${archive_path}"
 
       - name: Upload compiled artifact
         uses: actions/upload-artifact@v4
@@ -148,6 +137,20 @@ jobs:
           path: architec
           token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
 
+      - name: Checkout hippocampus source
+        uses: actions/checkout@v4
+        with:
+          repository: bfly123/hippocampus
+          path: hippocampus
+          token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
+
+      - name: Checkout llmgateway source
+        uses: actions/checkout@v4
+        with:
+          repository: bfly123/llmgateway
+          path: llmgateway
+          token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -171,4 +174,6 @@ jobs:
         env:
           ARCHITEC_RELEASE_PREBUILT_ARTIFACTS: "1"
           ARCHITEC_SOURCE_DIR: ${{ github.workspace }}/architec
+          ARCHITEC_HIPPOCAMPUS_SOURCE: ${{ github.workspace }}/hippocampus
+          ARCHITEC_LLMGATEWAY_SOURCE: ${{ github.workspace }}/llmgateway
         run: bash tools/publish_release.sh

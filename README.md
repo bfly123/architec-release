@@ -39,6 +39,10 @@ Recommended installation command:
 curl -fsSL https://www.architec.top/downloads/latest/install_prod.sh -o install_prod.sh && bash install_prod.sh
 ```
 
+同一条命令即可覆盖 Linux 与 macOS。安装器会自动识别当前系统类型和 CPU 架构，并选择对应的编译发布包。
+
+The same command is used on Linux and macOS. The installer auto-detects the current platform and fetches the matching compiled release archive.
+
 安装器会自动完成：
 
 The installer automatically:
@@ -48,11 +52,13 @@ The installer automatically:
 - 自动安装开源依赖 `hippocampus` 与 `llmgateway`
 - 生成默认配置模板
 - 把命令放入本机可执行路径
+- 自动按当前平台选择编译包
 - Checks the local runtime environment
 - Downloads and installs `archi`
 - Installs the open-source dependencies `hippocampus` and `llmgateway`
 - Writes default configuration templates
 - Places the executable in a usable local path
+- Selects the compiled archive that matches the current platform
 
 安装完成后，推荐按下面顺序开始：
 

@@ -36,6 +36,16 @@ bash tools/cut_release.sh
 
 正常情况下，push tag 之后由 GitHub Actions 负责把安装包上传到 `bfly123/architec-releases`。
 
+当前目标发布形态：
+
+- 用户侧仍然只记一条安装命令：
+  `curl -fsSL https://www.architec.top/downloads/latest/install_prod.sh -o install_prod.sh && bash install_prod.sh`
+- 安装器自动识别当前平台
+- GitHub Actions 负责产出并上传对应平台的编译包
+- 当前至少应保证：
+  - `archi-linux-x86_64.tar.gz`
+  - `archi-macos-arm64.tar.gz`
+
 ## 3. 推荐发布流程
 
 1. 在开发仓完成功能和修复。

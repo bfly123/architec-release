@@ -79,6 +79,10 @@ local environment, auto-install the open-source dependencies hippocampus and
 llmgateway when possible, and optionally guide the user through initial
 llmgateway API configuration.
 
+By default, the installer auto-detects the current operating system and CPU
+architecture, then downloads the matching compiled release archive. End users
+should normally use the same install command on Linux and macOS.
+
 Options:
   --version <tag|latest>     Release tag to install. Default: latest
   --repo <owner/name>        Release repository. Default: bfly123/architec-releases
@@ -1421,6 +1425,7 @@ BASE_URL="$(printf '%s' "${BASE_URL}" | sed 's#/*$##')"
 FALLBACK_BASE_URL="$(printf '%s' "${FALLBACK_BASE_URL}" | sed 's#/*$##')"
 ARCHITEC_SKILLS_ARCHIVE_URL="$(printf '%s' "${ARCHITEC_SKILLS_ARCHIVE_URL}" | sed 's#/*$##')"
 
+say "Detected target platform: ${OS_NAME}-${ARCH_NAME}"
 say "Checking local environment"
 ensure_command curl
 ensure_command python3
