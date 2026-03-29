@@ -52,14 +52,13 @@ jobs:
         with:
           repository: bfly123/architec
           path: architec
-          token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
+          ssh-key: ${{ secrets.ARCHITEC_REPO_SSH_KEY }}
 
       - name: Checkout llmgateway
         uses: actions/checkout@v4
         with:
           repository: bfly123/llmgateway
           path: llmgateway
-          token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -135,21 +134,19 @@ jobs:
         with:
           repository: bfly123/architec
           path: architec
-          token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
+          ssh-key: ${{ secrets.ARCHITEC_REPO_SSH_KEY }}
 
       - name: Checkout hippocampus source
         uses: actions/checkout@v4
         with:
           repository: bfly123/hippocampus
           path: hippocampus
-          token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
 
       - name: Checkout llmgateway source
         uses: actions/checkout@v4
         with:
           repository: bfly123/llmgateway
           path: llmgateway
-          token: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
