@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import gzip
 import os
 import shutil
 import subprocess
@@ -79,17 +80,50 @@ def build_dependency_wheels(python_bin: str) -> None:
 
 def build_skills_archive() -> Path:
     archive_path = DIST / "architec-skills.tar.gz"
-    skill_dirs = [
-        SOURCE_ROOT / "codex_skills",
-        SOURCE_ROOT / "claude_skills",
+    skill_dir_names = [
+        "codex_skills",
+        "claude_skills",
     ]
-    for skill_dir in skill_dirs:
-        if not skill_dir.is_dir():
-            raise SystemExit(f"Missing bundled skill directory: {skill_dir}")
+    skill_dirs = [SOURCE_ROOT / name for name in skill_dir_names]
+    missing_dirs = [skill_dir for skill_dir in skill_dirs if not skill_dir.is_dir()]
 
-    with tarfile.open(archive_path, "w:gz") as archive:
-        for skill_dir in skill_dirs:
-            archive.add(skill_dir, arcname=skill_dir.name)
+    if not missing_dirs:
+        with tarfile.open(archive_path, "w:gz") as archive:
+            for skill_dir in skill_dirs:
+                archive.add(skill_dir, arcname=skill_dir.name)
+        return archive_path
+
+    temp_tar_path = DIST / "architec-skills.tar"
+    try:
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(SOURCE_ROOT),
+                "archive",
+                "--format=tar",
+                "-o",
+                str(temp_tar_path),
+                "HEAD",
+                *skill_dir_names,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        detail = ""
+        if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+            detail = f" Git archive error: {exc.stderr.strip()}"
+        missing_text = ", ".join(str(path) for path in missing_dirs)
+        raise SystemExit(
+            f"Missing bundled skill directory in working tree: {missing_text}.{detail}"
+        ) from exc
+
+    with temp_tar_path.open("rb") as src, gzip.open(archive_path, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    temp_tar_path.unlink(missing_ok=True)
     return archive_path
 
 
