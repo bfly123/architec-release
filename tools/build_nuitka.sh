@@ -66,7 +66,13 @@ fi
 cd "${ROOT_DIR}"
 
 if [[ -d "${LLMGATEWAY_SRC}/llmgateway" ]]; then
-  export PYTHONPATH="${LLMGATEWAY_SRC}:${SOURCE_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+  PYTHONPATH_SEP="$("${PYTHON_BIN}" - <<'PY'
+import os
+
+print(os.pathsep, end="")
+PY
+)"
+  export PYTHONPATH="${LLMGATEWAY_SRC}${PYTHONPATH_SEP}${SOURCE_DIR}/src${PYTHONPATH:+${PYTHONPATH_SEP}${PYTHONPATH}}"
 fi
 
 if ! "${PYTHON_BIN}" -m nuitka --version >/dev/null 2>&1; then
