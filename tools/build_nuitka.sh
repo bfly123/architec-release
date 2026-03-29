@@ -7,7 +7,7 @@ SOURCE_DIR="${ARCHITEC_SOURCE_DIR:-$ROOT_DIR/../architec}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 BUILD_ROOT="${ARCHITEC_BUILD_ROOT:-$ROOT_DIR/build/nuitka}"
 DIST_DIR="${ARCHITEC_DIST_DIR:-$ROOT_DIR/release-assets}"
-ENTRYPOINT="${SOURCE_DIR}/tools/archi_entry.py"
+ENTRYPOINT="${SOURCE_DIR}/src/architec"
 LLMGATEWAY_SRC="${ARCHITEC_LLMGATEWAY_SRC:-$ROOT_DIR/../llmgateway/src}"
 VERSION="$(ARCHITEC_SOURCE_DIR="${SOURCE_DIR}" "${PYTHON_BIN}" - <<'PY'
 import tomllib
@@ -81,6 +81,7 @@ mkdir -p "${BUILD_ROOT}" "${DIST_DIR}"
 "${PYTHON_BIN}" -m nuitka \
   --standalone \
   --assume-yes-for-downloads \
+  --python-flag=-m \
   --follow-imports \
   --static-libpython=no \
   --nofollow-import-to=litellm \
