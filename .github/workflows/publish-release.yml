@@ -12,7 +12,30 @@ on:
       - "v*"
 
 jobs:
+  preflight-release-access:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      ARCHITEC_RELEASE_REPO: bfly123/architec-releases
+      GH_TOKEN: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
+    steps:
+      - name: Validate token secret
+        run: |
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "ARCHITEC_RELEASES_TOKEN is required to publish into ${ARCHITEC_RELEASE_REPO}" >&2
+            exit 1
+          fi
+
+      - name: Validate release repo access
+        run: |
+          if ! gh api "repos/${ARCHITEC_RELEASE_REPO}" >/dev/null 2>&1; then
+            echo "ARCHITEC_RELEASES_TOKEN cannot access ${ARCHITEC_RELEASE_REPO}. Update the secret with a token that has repository access." >&2
+            exit 1
+          fi
+
   build-compiled:
+    needs: preflight-release-access
     strategy:
       fail-fast: false
       matrix:
@@ -105,7 +128,9 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build-compiled
+    needs:
+      - preflight-release-access
+      - build-compiled
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -118,13 +143,6 @@ jobs:
       ARCHITEC_VERSION_TAG: ${{ github.event.inputs.version_tag || github.ref_name }}
       GH_TOKEN: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
     steps:
-      - name: Validate token secret
-        run: |
-          if [[ -z "${GH_TOKEN}" ]]; then
-            echo "ARCHITEC_RELEASES_TOKEN is required to publish into ${ARCHITEC_RELEASE_REPO}" >&2
-            exit 1
-          fi
-
       - name: Checkout architec
         uses: actions/checkout@v4
         with:

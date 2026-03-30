@@ -84,6 +84,7 @@ done
 
 if ! gh api "repos/${RELEASE_REPO}" >/dev/null 2>&1; then
   echo "Release repo not found or not accessible: ${RELEASE_REPO}" >&2
+  echo "Ensure GH_TOKEN can access ${RELEASE_REPO}. In GitHub Actions this usually means updating the ARCHITEC_RELEASES_TOKEN secret." >&2
   exit 1
 fi
 
