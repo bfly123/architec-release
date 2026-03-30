@@ -59,6 +59,7 @@ jobs:
       run:
         shell: bash
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       PYTHON_BIN: python
       ARCHITEC_TARGET_OS: ${{ matrix.target_os }}
       ARCHITEC_TARGET_ARCH: ${{ matrix.target_arch }}
@@ -66,12 +67,12 @@ jobs:
       ARCHITEC_LLMGATEWAY_SRC: ${{ github.workspace }}/llmgateway/src
     steps:
       - name: Checkout release tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: release-control
 
       - name: Checkout architec
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: bfly123/architec
           ref: master
@@ -79,13 +80,13 @@ jobs:
           ssh-key: ${{ secrets.ARCHITEC_REPO_SSH_KEY }}
 
       - name: Checkout llmgateway
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: bfly123/llmgateway
           path: llmgateway
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -119,7 +120,7 @@ jobs:
           python tools/verify_compiled_bundle.py "${archive_path}"
 
       - name: Upload compiled artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: |
@@ -139,17 +140,18 @@ jobs:
         shell: bash
     env:
       ARCHITEC_RELEASE_REPO: bfly123/architec-releases
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       PYTHON_BIN: python
       ARCHITEC_VERSION_TAG: ${{ github.event.inputs.version_tag || github.ref_name }}
       GH_TOKEN: ${{ secrets.ARCHITEC_RELEASES_TOKEN }}
     steps:
       - name: Checkout architec
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: release-control
 
       - name: Checkout architec source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: bfly123/architec
           ref: master
@@ -157,24 +159,24 @@ jobs:
           ssh-key: ${{ secrets.ARCHITEC_REPO_SSH_KEY }}
 
       - name: Checkout hippocampus source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: bfly123/hippocampus
           path: hippocampus
 
       - name: Checkout llmgateway source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: bfly123/llmgateway
           path: llmgateway
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Download compiled artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: compiled-*
           path: release-control/release-assets

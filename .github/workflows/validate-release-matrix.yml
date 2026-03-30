@@ -8,7 +8,22 @@ on:
   pull_request:
 
 jobs:
+  preflight-source-access:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      ARCHITEC_REPO_SSH_KEY: ${{ secrets.ARCHITEC_REPO_SSH_KEY }}
+    steps:
+      - name: Validate source checkout secret
+        run: |
+          if [[ -z "${ARCHITEC_REPO_SSH_KEY}" ]]; then
+            echo "ARCHITEC_REPO_SSH_KEY is required to validate the release matrix because bfly123/architec is checked out via SSH." >&2
+            exit 1
+          fi
+
   build-compiled:
+    needs: preflight-source-access
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +47,7 @@ jobs:
       run:
         shell: bash
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       PYTHON_BIN: python
       ARCHITEC_TARGET_OS: ${{ matrix.target_os }}
       ARCHITEC_TARGET_ARCH: ${{ matrix.target_arch }}
@@ -39,12 +55,12 @@ jobs:
       ARCHITEC_LLMGATEWAY_SRC: ${{ github.workspace }}/llmgateway/src
     steps:
       - name: Checkout release tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: release-control
 
       - name: Checkout architec
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: bfly123/architec
           ref: master
@@ -52,13 +68,13 @@ jobs:
           ssh-key: ${{ secrets.ARCHITEC_REPO_SSH_KEY }}
 
       - name: Checkout llmgateway
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: bfly123/llmgateway
           path: llmgateway
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -92,7 +108,7 @@ jobs:
           python tools/verify_compiled_bundle.py "${archive_path}"
 
       - name: Upload compiled artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: |
