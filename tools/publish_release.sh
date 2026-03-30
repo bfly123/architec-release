@@ -31,6 +31,7 @@ wheel_path="${DIST_DIR}/architec-${VERSION}-py3-none-any.whl"
 sdist_path="${DIST_DIR}/architec-${VERSION}.tar.gz"
 checksums_path="${DIST_DIR}/SHA256SUMS.txt"
 install_script_path="${ROOT_DIR}/tools/install_prod.sh"
+install_script_ps1_path="${ROOT_DIR}/tools/install_prod.ps1"
 skills_archive_path="${DIST_DIR}/architec-skills.tar.gz"
 
 if ! command -v gh >/dev/null 2>&1; then
@@ -68,6 +69,7 @@ required_assets=(
   "${sdist_path}"
   "${checksums_path}"
   "${install_script_path}"
+  "${install_script_ps1_path}"
   "${skills_archive_path}"
 )
 required_assets+=("${compiled_artifacts[@]}")
@@ -91,6 +93,7 @@ if ! gh api "repos/${RELEASE_REPO}/releases/tags/${VERSION_TAG}" >/dev/null 2>&1
     "${sdist_path}" \
     "${checksums_path}" \
     "${install_script_path}" \
+    "${install_script_ps1_path}" \
     "${skills_archive_path}" \
     "${compiled_artifacts[@]}" \
     "${dependency_artifacts[@]}" \
@@ -103,6 +106,7 @@ else
     "${sdist_path}" \
     "${checksums_path}" \
     "${install_script_path}" \
+    "${install_script_ps1_path}" \
     "${skills_archive_path}" \
     "${compiled_artifacts[@]}" \
     "${dependency_artifacts[@]}" \
