@@ -105,6 +105,7 @@ Environment overrides:
   ARCHITEC_FALLBACK_DOWNLOAD_BASE_URL
   ARCHITEC_INSTALL_BASE
   ARCHITEC_BIN_DIR
+  ARCHITEC_PYTHON_TOOLS_DIR
   ARCHITEC_TARGET_OS
   ARCHITEC_TARGET_ARCH
   ARCHITEC_ASSET_NAME
@@ -423,16 +424,82 @@ raise SystemExit(0)
 PY
 }
 
-python_can_use_user_site() {
-  python3 - <<'PY'
-import sys
-
-in_virtualenv = bool(
-    getattr(sys, "real_prefix", None)
-    or sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-)
-raise SystemExit(1 if in_virtualenv else 0)
+python_yaml_available() {
+  python3 - <<'PY' >/dev/null 2>&1
+try:
+    import yaml  # noqa: F401
+except ModuleNotFoundError:
+    raise SystemExit(1)
+raise SystemExit(0)
 PY
+}
+
+managed_python_tools_prefix() {
+  printf '%s' "${ARCHITEC_PYTHON_TOOLS_DIR:-${INSTALL_BASE}/python-tools}"
+}
+
+managed_python_venv_dir() {
+  local prefix
+  prefix="$(managed_python_tools_prefix)"
+  printf '%s' "${prefix}/venv"
+}
+
+managed_python_bin() {
+  local venv_dir
+  venv_dir="$(managed_python_venv_dir)"
+  if [[ "${OS_NAME}" == "windows" ]]; then
+    printf '%s' "${venv_dir}/Scripts/python.exe"
+  else
+    printf '%s' "${venv_dir}/bin/python"
+  fi
+}
+
+managed_hippo_bin() {
+  local venv_dir
+  venv_dir="$(managed_python_venv_dir)"
+  if [[ "${OS_NAME}" == "windows" ]]; then
+    printf '%s' "${venv_dir}/Scripts/hippo.exe"
+  else
+    printf '%s' "${venv_dir}/bin/hippo"
+  fi
+}
+
+ensure_python_venv_support() {
+  if python3 -m venv --help >/dev/null 2>&1; then
+    return 0
+  fi
+  if install_system_dependency python3 && python3 -m venv --help >/dev/null 2>&1; then
+    return 0
+  fi
+  die "python3 -m venv is unavailable. Please install python3-venv or the equivalent package for your OS and re-run."
+}
+
+ensure_managed_python_env() {
+  local venv_dir python_bin
+  venv_dir="$(managed_python_venv_dir)"
+  python_bin="$(managed_python_bin)"
+
+  if [[ -x "${python_bin}" ]] && "${python_bin}" -m pip --version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  ensure_python_venv_support
+  mkdir -p "$(managed_python_tools_prefix)"
+  say "Preparing isolated Python environment for Architec-managed dependencies"
+  python3 -m venv "${venv_dir}" || die "Failed to create Architec-managed Python environment at ${venv_dir}"
+}
+
+install_managed_hippo_launcher() {
+  local hippo_bin
+  hippo_bin="$(managed_hippo_bin)"
+  if [[ ! -x "${hippo_bin}" ]]; then
+    die "hippo launcher is missing from the Architec-managed Python environment: ${hippo_bin}"
+  fi
+  mkdir -p "${BIN_DIR}"
+  if ! ln -sf "${hippo_bin}" "${BIN_DIR}/hippo" 2>/dev/null; then
+    cp -f "${hippo_bin}" "${BIN_DIR}/hippo"
+  fi
+  say "Installed Hippo launcher ${BIN_DIR}/hippo"
 }
 
 install_python_git_package() {
@@ -440,17 +507,25 @@ install_python_git_package() {
   local module_name="$2"
   local git_url="$3"
   local pip_args=()
+  local wheel_name="${module_name}-"*
+  local wheel_path=""
+  local python_bin
 
-  if python_can_use_user_site; then
-    pip_args+=(--user)
-  fi
-
-  pip_args+=(--upgrade --force-reinstall)
+  python_bin="$(managed_python_bin)"
+  pip_args+=(--upgrade --upgrade-strategy only-if-needed)
   pip_args+=(--find-links "${TMP_DIR}")
 
   say "Installing or upgrading open-source dependency: ${label}"
   say "Source: ${git_url}"
-  if ! python3 -m pip install "${pip_args[@]}" "${git_url}"; then
+  rm -f "${TMP_DIR}/${wheel_name}" 2>/dev/null || true
+  if ! "${python_bin}" -m pip wheel --no-deps --wheel-dir "${TMP_DIR}" "${git_url}"; then
+    die "Failed to build a wheel for ${label} from ${git_url}. Please fix Python/network/build dependencies and re-run."
+  fi
+  wheel_path="$(find "${TMP_DIR}" -maxdepth 1 -type f -name "${wheel_name}" | sort | tail -n 1)"
+  if [[ -z "${wheel_path}" || ! -f "${wheel_path}" ]]; then
+    die "Built ${label} wheel could not be found in ${TMP_DIR} after packaging ${git_url}."
+  fi
+  if ! "${python_bin}" -m pip install "${pip_args[@]}" "${wheel_path}"; then
     die "Failed to install ${label} from ${git_url}. Please fix Python/network/build dependencies and re-run."
   fi
 }
@@ -463,25 +538,16 @@ install_python_wheel_package() {
   wheel_name="$(basename "${wheel_url%%\?*}")"
   local wheel_path="${TMP_DIR}/${wheel_name}"
   local pip_args=()
-  local pip_targets=()
-  local extra_wheel=""
+  local python_bin
 
-  if python_can_use_user_site; then
-    pip_args+=(--user)
-  fi
-
-  pip_args+=(--upgrade --force-reinstall)
-  pip_targets+=("${wheel_path}")
+  python_bin="$(managed_python_bin)"
+  pip_args+=(--upgrade --upgrade-strategy only-if-needed)
+  pip_args+=(--find-links "${TMP_DIR}")
 
   say "Installing or upgrading open-source dependency: ${label}"
   say "Wheel source: ${wheel_url}"
   curl -fL "${wheel_url}" -o "${wheel_path}" || die "Failed to download ${label} wheel from ${wheel_url}"
-  for extra_wheel in "${TMP_DIR}"/*.whl; do
-    [[ -e "${extra_wheel}" ]] || continue
-    [[ "${extra_wheel}" == "${wheel_path}" ]] && continue
-    pip_targets+=("${extra_wheel}")
-  done
-  python3 -m pip install "${pip_args[@]}" "${pip_targets[@]}" || die "Failed to install ${label} from wheel ${wheel_url}"
+  "${python_bin}" -m pip install "${pip_args[@]}" "${wheel_path}" || die "Failed to install ${label} from wheel ${wheel_url}"
 }
 
 install_python_dependency() {
@@ -506,12 +572,15 @@ install_open_source_dependencies() {
   say "Architec also uses two open-source Python packages:"
   say "- hippocampus"
   say "- llmgateway"
+  say "These packages are installed into an Architec-managed isolated Python environment."
   say "The installer will prefer bundled release wheels when available, then fall back to git sources."
+  ensure_managed_python_env
   if [[ -z "${HIPPOCAMPUS_WHEEL_URL}" || -z "${LLMGATEWAY_WHEEL_URL}" ]]; then
     ensure_command git
   fi
   install_python_dependency "llmgateway" "llmgateway" "${LLMGATEWAY_WHEEL_URL}" "${LLMGATEWAY_GIT_URL}"
   install_python_dependency "hippocampus" "hippocampus" "${HIPPOCAMPUS_WHEEL_URL}" "${HIPPOCAMPUS_GIT_URL}"
+  install_managed_hippo_launcher
 }
 
 repomix_install_prefix() {
@@ -965,6 +1034,9 @@ load_existing_gateway_config() {
   if [[ ! -f "${LLMGATEWAY_CONFIG_PATH}" ]]; then
     return 0
   fi
+  if ! python_yaml_available; then
+    return 0
+  fi
 
   local loaded=""
   loaded="$(python3 - "${LLMGATEWAY_CONFIG_PATH}" <<'PY'
@@ -1147,25 +1219,30 @@ write_architec_config() {
 import sys
 from pathlib import Path
 
-import yaml
-
 config_path = Path(sys.argv[1])
-payload = {
-    "version": 1,
-    "tasks": {
-        "architect_history": {"tier": "strong"},
-        "architect_feature": {"tier": "strong"},
-        "architect_component_scoring": {"tier": "weak"},
-        "architect_component_qa": {"tier": "strong"},
-        "architect_folder_naming": {"tier": "weak"},
-        "architect_topology_review": {"tier": "weak"},
-        "architect_full_report_md": {"tier": "strong"},
-        "architect_orchestrator": {"tier": "strong"},
-        "architec_summary": {"tier": "strong"},
-    },
-}
+payload = """version: 1
+tasks:
+  architect_history:
+    tier: strong
+  architect_feature:
+    tier: strong
+  architect_component_scoring:
+    tier: weak
+  architect_component_qa:
+    tier: strong
+  architect_folder_naming:
+    tier: weak
+  architect_topology_review:
+    tier: weak
+  architect_full_report_md:
+    tier: strong
+  architect_orchestrator:
+    tier: strong
+  architec_summary:
+    tier: strong
+"""
 config_path.write_text(
-    yaml.safe_dump(payload, default_flow_style=False, allow_unicode=True, sort_keys=False),
+    payload,
     encoding="utf-8",
 )
 PY
@@ -1182,22 +1259,24 @@ write_hippocampus_config() {
 import sys
 from pathlib import Path
 
-import yaml
-
 config_path = Path(sys.argv[1])
-payload = {
-    "version": 1,
-    "tasks": {
-        "phase_1": {"tier": "weak"},
-        "phase_2a": {"tier": "strong"},
-        "phase_2b": {"tier": "weak"},
-        "phase_3a": {"tier": "weak"},
-        "phase_3b": {"tier": "strong"},
-        "architect": {"tier": "strong"},
-    },
-}
+payload = """version: 1
+tasks:
+  phase_1:
+    tier: weak
+  phase_2a:
+    tier: strong
+  phase_2b:
+    tier: weak
+  phase_3a:
+    tier: weak
+  phase_3b:
+    tier: strong
+  architect:
+    tier: strong
+"""
 config_path.write_text(
-    yaml.safe_dump(payload, default_flow_style=False, allow_unicode=True, sort_keys=False),
+    payload,
     encoding="utf-8",
 )
 PY
@@ -1234,7 +1313,7 @@ should_configure_llm_now() {
     return 1
   fi
   if [[ -f "${LLMGATEWAY_CONFIG_PATH}" ]]; then
-    return 0
+    return 1
   fi
   if llm_credentials_present; then
     return 0
@@ -1248,6 +1327,10 @@ should_configure_llm_now() {
 }
 
 validate_llm_config() {
+  if ! python_yaml_available; then
+    warn "Skipping installer-side YAML validation because PyYAML is unavailable in the current python3 environment."
+    return 0
+  fi
   python3 - "${LLMGATEWAY_CONFIG_PATH}" "${LLM_CONFIG_PATH}" <<'PY'
 import sys
 from pathlib import Path
@@ -1298,6 +1381,10 @@ setup_llm_config() {
   seed_global_json_config "scoring-policy.json"
   write_architec_config
   write_hippocampus_config
+  if [[ -f "${LLMGATEWAY_CONFIG_PATH}" ]] && ! python_yaml_available; then
+    CONFIGURE_LLM="0"
+    warn "PyYAML is unavailable in the current python3 environment. Keeping the existing llmgateway config at ${LLMGATEWAY_CONFIG_PATH} without interactive edits."
+  fi
   load_existing_gateway_config
   apply_llm_defaults
 
@@ -1608,7 +1695,9 @@ say "Installed Architec ${RELEASE_TAG} to ${TARGET_DIR}"
 say "Installed launcher ${BIN_DIR}/archi"
 say "Binary: ${TARGET_DIR}/${BINARY_NAME}"
 if [[ "${INSTALL_OPEN_SOURCE_DEPS}" != "0" ]]; then
-  say "Ensured open-source Python dependencies from release wheels or git: hippocampus, llmgateway"
+  say "Ensured open-source Python dependencies in the Architec-managed environment: hippocampus, llmgateway"
+  say "Managed Python environment: $(managed_python_venv_dir)"
+  say "Hippo launcher: ${BIN_DIR}/hippo"
 fi
 say "Repository structure helper: ${BIN_DIR}/repomix"
 say "Architec task config: ${LLM_CONFIG_PATH}"

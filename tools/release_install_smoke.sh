@@ -15,6 +15,7 @@ TMP_DIR="$(mktemp -d)"
 HOME_DIR="${TMP_DIR}/home"
 INSTALL_BASE="${TMP_DIR}/install"
 BIN_DIR="${TMP_DIR}/bin"
+MANAGED_PYTHON_DIR="${INSTALL_BASE}/python-tools/venv"
 PYTHON_USER_BASE="${TMP_DIR}/pyuser"
 PYTHON_VENV_DIR="${TMP_DIR}/venv"
 CLOUD_DATA_DIR="${TMP_DIR}/cloud-data"
@@ -238,11 +239,15 @@ if [[ ! -x "${BIN_DIR}/archi" ]]; then
 fi
 
 if [[ "${USE_GITHUB_DOWNLOADS}" == "1" ]]; then
-  HOME="${HOME_DIR}" \
-  PATH="${BIN_DIR}:${PYTHON_VENV_DIR}/bin:${PYTHON_USER_BASE}/bin:${PATH}" \
-  PYTHONUSERBASE="${PYTHON_USER_BASE}" \
-  VIRTUAL_ENV="${PYTHON_VENV_DIR}" \
-  python3 - <<'PY'
+  if [[ ! -x "${MANAGED_PYTHON_DIR}/bin/python" ]]; then
+    echo "Managed Python environment not found at ${MANAGED_PYTHON_DIR}/bin/python" >&2
+    exit 1
+  fi
+  if [[ ! -x "${BIN_DIR}/hippo" ]]; then
+    echo "Managed hippo launcher not found at ${BIN_DIR}/hippo" >&2
+    exit 1
+  fi
+  "${MANAGED_PYTHON_DIR}/bin/python" - <<'PY'
 import importlib.util
 
 missing = [
