@@ -113,6 +113,8 @@ fi
 PACKAGE_ROOT="${BUILD_ROOT}/${PACKAGE_NAME}"
 mkdir -p "${PACKAGE_ROOT}"
 cp -R "${DIST_BUNDLE_DIR}/." "${PACKAGE_ROOT}/"
+mkdir -p "${PACKAGE_ROOT}/src"
+cp -R "${SOURCE_DIR}/src/architec" "${PACKAGE_ROOT}/src/"
 mkdir -p "${PACKAGE_ROOT}/tools"
 cp "${SOURCE_DIR}"/tools/*.py "${PACKAGE_ROOT}/tools/"
 
@@ -122,7 +124,7 @@ cat > "${PACKAGE_ROOT}/python3" <<'EOF'
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/tools${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH="${SCRIPT_DIR}/src:${SCRIPT_DIR}:${SCRIPT_DIR}/tools${PYTHONPATH:+:${PYTHONPATH}}"
 exec /usr/bin/env python3 "$@"
 EOF
 chmod +x "${PACKAGE_ROOT}/python3"

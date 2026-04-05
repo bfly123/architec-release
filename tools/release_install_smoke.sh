@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SOURCE_DIR="${ARCHITEC_SOURCE_DIR:-$ROOT_DIR/../architec}"
 CLOUD_DIR="${ARCHITEC_CLOUD_DIR:-$ROOT_DIR/../architec-cloud}"
+RELEASE_ASSETS_DIR="${ARCHITEC_RELEASE_ASSETS_DIR:-$ROOT_DIR/release-assets}"
+CLOUD_RELEASE_ASSETS_DIR="${CLOUD_DIR}/.release-assets"
 INSTALL_SCRIPT="${ROOT_DIR}/tools/install_prod.sh"
 BASE_URL="${ARCHITEC_CLOUD_APP_URL:-http://127.0.0.1:3100}"
 DOWNLOAD_BASE_URL="${ARCHITEC_CLOUD_DOWNLOAD_BASE_URL:-${BASE_URL}/downloads/latest}"
@@ -123,6 +125,15 @@ need_cmd python3
 
 mkdir -p "${HOME_DIR}" "${INSTALL_BASE}" "${BIN_DIR}" "${PYTHON_USER_BASE}" "${CLOUD_DATA_DIR}"
 python3 -m venv "${PYTHON_VENV_DIR}"
+
+echo "Syncing local release assets into cloud download directory"
+[[ -f "${RELEASE_ASSETS_DIR}/archi-linux-x86_64.tar.gz" ]] || {
+  echo "Missing ${RELEASE_ASSETS_DIR}/archi-linux-x86_64.tar.gz" >&2
+  exit 1
+}
+rm -rf "${CLOUD_RELEASE_ASSETS_DIR}"
+mkdir -p "${CLOUD_RELEASE_ASSETS_DIR}"
+cp -R "${RELEASE_ASSETS_DIR}/." "${CLOUD_RELEASE_ASSETS_DIR}/"
 
 resolve_github_release_assets() {
   local version_tag="$1"
@@ -259,6 +270,22 @@ if missing:
     raise SystemExit(f"expected bundled dependency wheels to be installed, missing: {', '.join(missing)}")
 PY
 fi
+
+echo "Checking bundled helper runtime"
+PROBE_ROOT="${TMP_DIR}/probe-repo"
+mkdir -p "${PROBE_ROOT}/src"
+cat > "${PROBE_ROOT}/src/demo.py" <<'EOF'
+def demo() -> int:
+    return 1
+EOF
+HOME="${HOME_DIR}" \
+PATH="${BIN_DIR}:${PYTHON_VENV_DIR}/bin:${PYTHON_USER_BASE}/bin:${PATH}" \
+PYTHONUSERBASE="${PYTHON_USER_BASE}" \
+VIRTUAL_ENV="${PYTHON_VENV_DIR}" \
+"${INSTALL_BASE}/linux-x86_64/python3" \
+  "${INSTALL_BASE}/linux-x86_64/tools/collect_repo_metrics.py" \
+  --root "${PROBE_ROOT}" \
+  --rubric "${HOME_DIR}/.architec/rubric.json" >/dev/null
 
 echo "Checking fresh install auth status"
 HOME="${HOME_DIR}" \
