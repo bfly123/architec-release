@@ -89,6 +89,8 @@ mkdir -p "${BUILD_ROOT}" "${DIST_DIR}"
   --assume-yes-for-downloads \
   --python-flag=-m \
   --follow-imports \
+  --include-package=certifi \
+  --include-package-data=certifi \
   --static-libpython=no \
   --nofollow-import-to=litellm \
   --nofollow-import-to=torch \

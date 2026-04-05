@@ -45,6 +45,12 @@ def find_binary(root: Path, binary_name: str) -> Path:
     return matches[0]
 
 
+def verify_certifi_bundle(root: Path) -> None:
+    matches = sorted(path for path in root.rglob("certifi/cacert.pem") if path.is_file())
+    if not matches:
+        raise SystemExit("Compiled bundle is missing certifi/cacert.pem, so TLS fallback cannot work.")
+
+
 def verify_status_output(binary_path: Path, work_dir: Path) -> None:
     status_path = work_dir / "status.json"
     isolated_home = work_dir / "home"
@@ -92,6 +98,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="archi-bundle-check-") as tmp:
         tmp_dir = Path(tmp)
         extract_archive(archive_path, tmp_dir)
+        verify_certifi_bundle(tmp_dir)
         binary_path = find_binary(tmp_dir, binary_name)
         verify_status_output(binary_path, tmp_dir)
 
