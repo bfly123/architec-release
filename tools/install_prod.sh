@@ -98,6 +98,11 @@ Options:
   --skip-llm-config          Do not prompt for llmgateway API setup
   --help                     Show this message
 
+Existing llmgateway config files are never overwritten by install or update.
+If ~/.llmgateway/config.yaml is missing, the installer creates a 0600 starter
+template. Reconfiguration of an existing file must be done manually after
+backing up the current config.
+
 Environment overrides:
   ARCHITEC_RELEASE_REPO
   ARCHITEC_VERSION
@@ -1049,7 +1054,14 @@ path = sys.argv[1]
 with open(path, "r", encoding="utf-8") as handle:
     payload = yaml.safe_load(handle) or {}
 
-provider = payload.get("provider") or {}
+provider = {}
+providers = payload.get("providers")
+if isinstance(providers, list):
+    provider = next((item for item in providers if isinstance(item, dict)), {})
+elif isinstance(providers, dict):
+    provider = next((item for item in providers.values() if isinstance(item, dict)), {})
+if not provider:
+    provider = payload.get("provider") or {}
 settings = payload.get("settings") or {}
 
 print(
@@ -1173,34 +1185,55 @@ def render_mapping_block(indent: str, key: str, mapping: dict[str, object]) -> l
 
 lines = [
     "# llmgateway config for Architec",
-    "# Common case: keep provider_type and api_style as-is, then only fill provider.base_url",
-    "# and provider.api_key. The settings block already contains the recommended defaults.",
-    "# headers usually stays {} unless your provider explicitly requires extra HTTP headers.",
-    "# model_map usually stays {} unless your backend expects different model ids.",
+    "# Installer rule: this file is created only when missing. Existing provider",
+    "# credentials are never overwritten by install or update.",
+    "#",
+    "# Fill the primary provider base_url and api_key below, or set the",
+    "# environment variables referenced by your own copy of this file.",
+    "#",
+    "# llmgateway supports ordered provider fallback through `providers`.",
+    "# Providers are tried in order; after one succeeds, provider-state.json may",
+    "# remember it for later requests. Keep only providers you actually use",
+    "# uncommented.",
     "version: 1",
     "",
-    "provider:",
-    f"  provider_type: {quoted(provider_type)}",
-    f"  api_style: {quoted(api_style)}",
-    f"  base_url: {quoted(base_url)}",
-    f"  api_key: {quoted(api_key)}",
-    *render_mapping_block("  ", "headers", headers),
-    "  # Example when a provider requires extra headers:",
-    "  # headers:",
-    "  #   anthropic-version: \"2023-06-01\"",
-    *render_mapping_block("  ", "model_map", model_map),
-    "  # Example when backend model ids differ from the names used by Architec:",
-    "  # model_map:",
-    "  #   gpt-5.4: openai/gpt-5.4",
-    "  #   gpt-5.4-mini: openai/gpt-5.4-mini",
+    "providers:",
+    "  # Primary provider. Common api_style values: openai_chat, responses, anthropic, litellm.",
+    f"  - provider_type: {quoted(provider_type)}",
+    f"    api_style: {quoted(api_style)}",
+    f"    base_url: {quoted(base_url)}  # e.g. https://your-llm-endpoint/v1",
+    f"    api_key: {quoted(api_key)}  # prefer a private local file or env-expanded value",
+    *render_mapping_block("    ", "headers", headers),
+    "    # headers example, if your provider requires extra HTTP headers:",
+    "    # headers:",
+    "    #   anthropic-version: \"2023-06-01\"",
+    *render_mapping_block("    ", "model_map", model_map),
+    "    # model_map example, if provider model IDs differ from Architec names:",
+    "    # model_map:",
+    "    #   gpt-5.4: openai/gpt-5.4",
+    "    #   gpt-5.4-mini: openai/gpt-5.4-mini",
+    "",
+    "  # Optional fallback provider example.",
+    "  # Uncomment and fill this block to let llmgateway try a secondary API",
+    "  # source after primary transport failures.",
+    "  # - provider_type: openai",
+    "  #   api_style: openai_chat",
+    "  #   base_url: ${ARCHITEC_LLM_SECONDARY_BASE_URL}",
+    "  #   api_key: ${ARCHITEC_LLM_SECONDARY_API_KEY}",
+    "  #   headers: {}",
+    "  #   model_map:",
+    "  #     gpt-5.4: secondary-provider-strong-model",
+    "  #     gpt-5.4-mini: secondary-provider-fast-model",
     "",
     "settings:",
+    f"  fallback_model: {quoted(weak_model or strong_model)}",
     f"  strong_model: {quoted(strong_model)}",
     f"  weak_model: {quoted(weak_model)}",
     f"  strong_reasoning_effort: {quoted(strong_reasoning_effort)}",
     f"  weak_reasoning_effort: {quoted(weak_reasoning_effort)}",
     f"  max_concurrent: {max_concurrent}",
     f"  retry_max: {retry_max}",
+    "  transport_retries: 2",
     f"  timeout: {timeout}",
     "",
 ]
@@ -1348,7 +1381,14 @@ if not architec_path.exists():
 gateway_payload = yaml.safe_load(gateway_path.read_text(encoding="utf-8")) or {}
 architec_payload = yaml.safe_load(architec_path.read_text(encoding="utf-8")) or {}
 
-provider = gateway_payload.get("provider") or {}
+provider = {}
+providers = gateway_payload.get("providers")
+if isinstance(providers, list):
+    provider = next((item for item in providers if isinstance(item, dict)), {})
+elif isinstance(providers, dict):
+    provider = next((item for item in providers.values() if isinstance(item, dict)), {})
+if not provider:
+    provider = gateway_payload.get("provider") or {}
 settings = gateway_payload.get("settings") or {}
 tasks = architec_payload.get("tasks") or {}
 
@@ -1377,14 +1417,27 @@ PY
 }
 
 setup_llm_config() {
+  local installer_requested_llm_config="0"
+  if truthy "${CONFIGURE_LLM}" || llm_credentials_present; then
+    installer_requested_llm_config="1"
+  fi
+
   seed_global_json_config "rubric.json"
   seed_global_json_config "scoring-policy.json"
   write_architec_config
   write_hippocampus_config
-  if [[ -f "${LLMGATEWAY_CONFIG_PATH}" ]] && ! python_yaml_available; then
-    CONFIGURE_LLM="0"
-    warn "PyYAML is unavailable in the current python3 environment. Keeping the existing llmgateway config at ${LLMGATEWAY_CONFIG_PATH} without interactive edits."
+
+  if [[ -f "${LLMGATEWAY_CONFIG_PATH}" ]]; then
+    load_existing_gateway_config
+    apply_llm_defaults
+    say "Keeping existing llmgateway config at ${LLMGATEWAY_CONFIG_PATH}"
+    if [[ "${installer_requested_llm_config}" == "1" ]]; then
+      warn "Existing llmgateway config was not modified. Edit ${LLMGATEWAY_CONFIG_PATH} manually or back it up before replacing it."
+    fi
+    say "Skipped llmgateway API setup for now. Fill provider.base_url and provider.api_key in ${LLMGATEWAY_CONFIG_PATH} when you are ready."
+    return 0
   fi
+
   load_existing_gateway_config
   apply_llm_defaults
 
@@ -1556,7 +1609,17 @@ else
   fi
 fi
 
-if [[ -n "${BASE_URL}" && ( -z "${HIPPOCAMPUS_WHEEL_URL}" || -z "${LLMGATEWAY_WHEEL_URL}" || -z "${ARCHITEC_SKILLS_ARCHIVE_URL}" ) ]]; then
+needs_release_metadata_fallback() {
+  if [[ "${INSTALL_OPEN_SOURCE_DEPS}" != "0" && ( -z "${HIPPOCAMPUS_WHEEL_URL}" || -z "${LLMGATEWAY_WHEEL_URL}" ) ]]; then
+    return 0
+  fi
+  if [[ "${INSTALL_SKILLS}" != "0" && -z "${ARCHITEC_SKILLS_ARCHIVE_URL}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+if [[ -n "${BASE_URL}" ]] && needs_release_metadata_fallback; then
   if read -r _RESOLVED_TAG _RESOLVED_DOWNLOAD_URL _RESOLVED_CHECKSUMS_URL RELEASE_HIPPOCAMPUS_WHEEL_URL RELEASE_LLMGATEWAY_WHEEL_URL RELEASE_SKILLS_ARCHIVE_URL < <(
     resolve_github_release_metadata "${ASSET_NAME}" 2>/dev/null
   ); then

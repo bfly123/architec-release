@@ -712,6 +712,11 @@ starter configs, and prepare browser or activation-code authorization.
 Common examples:
   powershell -ExecutionPolicy Bypass -File .\install_prod.ps1
   powershell -ExecutionPolicy Bypass -File .\install_prod.ps1 -Version v0.2.4
+
+Existing llmgateway config files are never overwritten by install or update.
+If ~/.llmgateway/config.yaml is missing, the installer creates a starter
+template. Reconfiguration of an existing file must be done manually after
+backing up the current config.
 "@ | Write-Host
 }
 
@@ -939,25 +944,50 @@ tasks:
     if (-not (Test-Path $LLMGatewayConfigPath)) {
         Write-TextFileIfMissing -PathValue $LLMGatewayConfigPath -Content @"
 # llmgateway config for Architec
-# Common case: keep provider_type and api_style as-is, then only fill provider.base_url
-# and provider.api_key. The settings block already contains the recommended defaults.
+# Installer rule: this file is created only when missing. Existing provider
+# credentials are never overwritten by install or update.
+#
+# Fill the primary provider base_url and api_key below.
+# llmgateway supports ordered provider fallback through providers.
 version: 1
 
-provider:
-  provider_type: "$GatewayProviderType"
-  api_style: "$GatewayApiStyle"
-  base_url: "$GatewayBaseUrl"
-  api_key: "$GatewayApiKey"
-  headers: {}
-  model_map: {}
+providers:
+  # Primary provider. Common api_style values: openai_chat, responses, anthropic, litellm.
+  - provider_type: "$GatewayProviderType"
+    api_style: "$GatewayApiStyle"
+    base_url: "$GatewayBaseUrl"  # e.g. https://your-llm-endpoint/v1
+    api_key: "$GatewayApiKey"  # prefer a private local file or env-expanded value
+    headers: {}
+    # headers example, if your provider requires extra HTTP headers:
+    # headers:
+    #   anthropic-version: "2023-06-01"
+    model_map: {}
+    # model_map example, if provider model IDs differ from Architec names:
+    # model_map:
+    #   gpt-5.4: openai/gpt-5.4
+    #   gpt-5.4-mini: openai/gpt-5.4-mini
+
+  # Optional fallback provider example.
+  # Uncomment and fill this block to let llmgateway try a secondary API
+  # source after primary transport failures.
+  # - provider_type: openai
+  #   api_style: openai_chat
+  #   base_url: `${ARCHITEC_LLM_SECONDARY_BASE_URL}
+  #   api_key: `${ARCHITEC_LLM_SECONDARY_API_KEY}
+  #   headers: {}
+  #   model_map:
+  #     gpt-5.4: secondary-provider-strong-model
+  #     gpt-5.4-mini: secondary-provider-fast-model
 
 settings:
+  fallback_model: "$WeakModel"
   strong_model: "$StrongModel"
   weak_model: "$WeakModel"
   strong_reasoning_effort: "$StrongReasoning"
   weak_reasoning_effort: "$WeakReasoning"
   max_concurrent: $GatewayMaxConcurrent
   retry_max: $GatewayRetryMax
+  transport_retries: 2
   timeout: $GatewayTimeout
 "@
         if ([string]::IsNullOrWhiteSpace($GatewayBaseUrl) -or [string]::IsNullOrWhiteSpace($GatewayApiKey)) {
@@ -967,6 +997,9 @@ settings:
         }
     } else {
         Say "Keeping existing llmgateway config at $LLMGatewayConfigPath"
+        if ($ForceConfigureLLM -or $hasCredentials) {
+            Warn "Existing llmgateway config was not modified. Edit $LLMGatewayConfigPath manually or back it up before replacing it."
+        }
     }
 
     if ([string]::IsNullOrWhiteSpace($LoginMethod)) {
